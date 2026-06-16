@@ -1,0 +1,66 @@
+# PLAN.md
+
+Build plan for ChronoJEPA. The project compares three placements of the SIGReg objective
+to diagnose and fix the time-axis collapse described in LeJEPA issue #27. Run the phases in
+order, one phase per session, and commit between phases so each phase starts from a clean,
+known state.
+
+## Repo layout
+
+```
+chronojepa/
+  sigreg/   SIGReg objective: univariate tests, random slicing, placement variants
+  models/   encoders (PatchTST, TCN), optional MLP predictor, RevIN
+  data/     dataset loaders (PEMS first, then ETT and financial), augmentations
+  train/    trainer and training loop
+  eval/     linear and kNN probe, forecasting, Mahalanobis anomaly scoring, model selection
+  utils/    seeding, device selection, logging
+configs/    Hydra configs
+scripts/    runnable entry points (init.sh, later train.py)
+tests/      pytest suite
+```
+
+## Placement milestones (the core contribution)
+
+The whole project is organized around three placements of SIGReg relative to the time axis.
+These are the milestones the experiments must compare:
+
+- [ ] `pooled`: one SIGReg over the pooled sequence embedding. Baseline, expected to
+  collapse to a constant per-sequence "ID vector" along time.
+- [ ] `dual`: SIGReg within each sequence across time, plus across samples in the batch.
+  Expected to prevent the collapse.
+- [ ] `structured`: a multivariate or joint formulation. Open research question.
+
+## Phase checklist
+
+- [x] **Phase 0: Plan and scaffold.** Repo layout, pyproject managed by uv, ruff and pytest
+  config, pre-commit, package skeleton with empty modules, a trivial passing test, and
+  `scripts/init.sh`. Extended for publishing: MIT license, Python `.gitignore`, README,
+  GitHub Actions CI, and this plan.
+- [ ] **Phase 1: SIGReg core, ground-truthed against scipy.** Epps-Pulley univariate test,
+  random-slicing wrapper, and `PooledSIGReg`. Tests cross-check the statistic against scipy
+  or a closed form, confirm near-zero loss on `N(0, I)`, confirm gradient flow, and confirm
+  CPU and MPS agreement.
+- [ ] **Phase 2: Encoders and RevIN.** PatchTST-style transformer encoder, a TCN baseline
+  with a shared tensor contract, and RevIN with normalize and denormalize.
+- [ ] **Phase 3: Data and augmentations (PEMS first).** Sliding-window PEMS loader, a
+  two-view augmentation pipeline, and a Dataset plus DataLoader factory. No look-ahead bias:
+  normalization statistics computed on the train split only and applied forward.
+- [ ] **Phase 4: SIGReg placements and training loop.** `DualSIGReg` and `StructuredSIGReg`
+  behind a common interface selectable by config, the combined LeJEPA objective with a single
+  lambda tradeoff, and a minimal device-agnostic training loop with W&B logging.
+- [ ] **Phase 5: Collapse diagnostics and downstream evaluation.** Across-time variance and
+  effective rank diagnostics, frozen-encoder linear and kNN probes, a forecasting head, and a
+  Mahalanobis anomaly scorer. Compare pooled against dual.
+- [ ] **Phase 6: Label-free model selection.** Rank runs by final SIGReg loss and report the
+  Spearman correlation with the labeled downstream metric.
+- [ ] **Phase 7: Experiment runner, configs, sweeps.** Hydra configs and named experiments
+  (smoke, pems_pooled, pems_dual, pems_structured), `scripts/train.py` as the single entry
+  point, and a sweep over lambda and the three placements.
+- [ ] **Phase 8: README, reproducibility, and writeup.** Final README with the placement
+  comparison result, and a RESULTS.md with the comparison table and plots.
+
+## Definition of done (every phase)
+
+ruff passes, the targeted tests pass, new behavior has a test, and a smoke run completes
+without error. Results are reported as facts: what ran and what passed.

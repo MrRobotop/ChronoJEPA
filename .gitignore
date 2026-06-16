@@ -1,0 +1,47 @@
+# Byte-compiled / optimized / cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# uv
+.uv/
+
+# Test and lint caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Editors and OS
+.idea/
+.vscode/
+.DS_Store
+
+# Experiment outputs and logs
+wandb/
+outputs/
+multirun/
+runs/
+results/
+*.ckpt
+*.pt
+
+# Local datasets and caches (top-level cache dir only, not the chronojepa/data package)
+/data/
+*.csv
+*.parquet
+
+# Session-local agent state (not a project deliverable)
+.remember/
