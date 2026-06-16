@@ -16,6 +16,7 @@ from chronojepa.utils.seed import set_seed
 
 from .anomaly import MahalanobisScorer, inject_anomaly
 from .collapse import collapse_report
+from .model_selection import label_free_model_selection
 from .probes import extract_features, forecast_linear_probe
 
 
@@ -230,7 +231,7 @@ def _train_placement(
     seed: int,
     device: torch.device,
 ):
-    """Train one placement on the series and return the frozen encoder, scaler, and splits."""
+    """Train one placement and return the frozen encoder, scaler, splits, and training logger."""
     set_seed(seed)
     loaders, scaler, splits = build_dataloaders(
         series,
@@ -243,7 +244,7 @@ def _train_placement(
     encoder = PatchTSTEncoder(
         num_channels=series.shape[1], patch_len=16, stride=8, d_model=d_model, depth=2, n_heads=4
     )
-    train(
+    logger = train(
         encoder,
         make_sigreg(placement, num_slices=num_slices),
         loaders["train"],
@@ -252,7 +253,7 @@ def _train_placement(
         device=device,
         seed=seed,
     )
-    return encoder.to(device).eval(), scaler, splits
+    return encoder.to(device).eval(), scaler, splits, logger
 
 
 def _anomaly_auroc_one_seed(
@@ -274,7 +275,7 @@ def _anomaly_auroc_one_seed(
     rng = np.random.default_rng(seed)
     result: dict[str, dict[str, float]] = {}
     for placement in placements:
-        encoder, scaler, splits = _train_placement(
+        encoder, scaler, splits, _ = _train_placement(
             series,
             placement,
             steps=steps,
@@ -400,7 +401,7 @@ def run_horizon_sweep(
 
     for seed in seeds:
         for placement in placements:
-            encoder, scaler, splits = _train_placement(
+            encoder, scaler, splits, _ = _train_placement(
                 series,
                 placement,
                 steps=steps,
@@ -483,4 +484,130 @@ def format_anomaly_table(aggregate: dict[str, dict[str, dict[str, float]]]) -> s
             entry = per_kind[kind]
             cells.append(f"{entry['mean']:.4f}+-{entry['std']:.4f}".rjust(22))
         lines.append("".join(cells))
+    return "\n".join(lines)
+
+
+_LAMBDA_METRICS = (
+    "sigreg_loss",
+    "across_time_variance",
+    "effective_rank",
+    "forecast_mae",
+    "forecast_mse",
+)
+
+
+def run_lambda_sweep(
+    series: np.ndarray,
+    *,
+    lambdas: tuple[float, ...] = (0.1, 0.3, 0.5, 0.7, 0.9),
+    placements: tuple[str, ...] = ("pooled", "dual"),
+    seeds: tuple[int, ...] = (0, 1, 2),
+    steps: int = 500,
+    window: int = 96,
+    horizon: int = 12,
+    stride: int = 8,
+    batch_size: int = 32,
+    d_model: int = 32,
+    num_slices: int = 32,
+    final_window: int = 50,
+    device: torch.device | None = None,
+    results_path: str | Path | None = None,
+) -> dict:
+    """Sweep lambda across placements and report collapse, downstream, and label-free selection.
+
+    For each (placement, lambda, seed) it records the final SIGReg loss (mean over the last
+    ``final_window`` steps), the collapse metrics, and the trajectory-forecasting MAE and MSE.
+    Then it ranks all configs by their label-free SIGReg loss and correlates that with the
+    labeled downstream metric, testing whether SIGReg loss selects models without labels.
+    Returns ``{"configs": {name: {metric: {mean, std}}}, "label_free": {...}}``.
+    """
+    device = device or get_device()
+    raw: dict[str, dict[str, list[float]]] = {}
+
+    for seed in seeds:
+        for placement in placements:
+            for lam in lambdas:
+                name = f"{placement}|lam{lam}"
+                encoder, scaler, splits, logger = _train_placement(
+                    series,
+                    placement,
+                    steps=steps,
+                    window=window,
+                    stride=stride,
+                    batch_size=batch_size,
+                    d_model=d_model,
+                    num_slices=num_slices,
+                    lam=lam,
+                    seed=seed,
+                    device=device,
+                )
+                final_sigreg = float(
+                    np.mean([record["sigreg"] for record in logger.history[-final_window:]])
+                )
+                normalized = scaler.transform(series)
+                x_train, y_train = _forecast_windows(
+                    normalized, *splits["train"], window, horizon, stride, mode="trajectory"
+                )
+                x_val, y_val = _forecast_windows(
+                    normalized, *splits["val"], window, horizon, stride, mode="trajectory"
+                )
+                with torch.no_grad():
+                    tokens, _ = encoder(torch.from_numpy(x_val).to(device))
+                report = collapse_report(tokens.cpu())
+                forecast = forecast_linear_probe(
+                    extract_features(encoder, torch.from_numpy(x_train), device, pool=False),
+                    y_train,
+                    extract_features(encoder, torch.from_numpy(x_val), device, pool=False),
+                    y_val,
+                )
+                record = raw.setdefault(name, {key: [] for key in _LAMBDA_METRICS})
+                record["sigreg_loss"].append(final_sigreg)
+                record["across_time_variance"].append(report["across_time_variance"])
+                record["effective_rank"].append(report["effective_rank"])
+                record["forecast_mae"].append(forecast["mae"])
+                record["forecast_mse"].append(forecast["mse"])
+
+    configs: dict[str, dict[str, dict[str, float]]] = {}
+    for name, record in raw.items():
+        configs[name] = {
+            key: {"mean": float(np.mean(record[key])), "std": float(np.std(record[key]))}
+            for key in _LAMBDA_METRICS
+        }
+
+    names = list(configs)
+    label_free = label_free_model_selection(
+        names,
+        [configs[n]["sigreg_loss"]["mean"] for n in names],
+        [configs[n]["forecast_mae"]["mean"] for n in names],
+        lower_is_better=True,
+    )
+    out = {"configs": configs, "label_free": label_free}
+
+    if results_path is not None:
+        path = Path(results_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(out, indent=2))
+    return out
+
+
+def format_lambda_table(out: dict) -> str:
+    """Render the lambda sweep: per-config metrics plus the label-free selection summary."""
+    configs = out["configs"]
+    header = f"{'config':<16}{'sigreg':>12}{'across_time':>14}{'eff_rank':>10}{'fc_mae':>12}"
+    lines = [header, "-" * len(header)]
+    for name in sorted(configs):
+        c = configs[name]
+        lines.append(
+            f"{name:<16}{c['sigreg_loss']['mean']:>12.4f}"
+            f"{c['across_time_variance']['mean']:>14.4f}"
+            f"{c['effective_rank']['mean']:>10.3f}{c['forecast_mae']['mean']:>12.4f}"
+        )
+    lf = out["label_free"]
+    lines += [
+        "",
+        f"label-free selection: spearman(sigreg_loss, forecast_mae) = "
+        f"{lf['spearman']:.3f} (p={lf['pvalue']:.3f})",
+        f"label-free pick = {lf['label_free_pick']}   "
+        f"label-based pick = {lf['label_based_pick']}   agree = {lf['agree']}",
+    ]
     return "\n".join(lines)
