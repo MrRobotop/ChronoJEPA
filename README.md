@@ -44,10 +44,13 @@ We then ruled out the obvious explanation. The guess that pooled wins only becau
 horizons are near persistence predicts the gap should close at longer horizons; a horizon sweep
 from 3 to 48 steps shows it does not, so pooled's small edge is horizon-independent, not a
 persistence artifact. A third test, Mahalanobis anomaly detection on token features, points the
-same way: both placements detect injected anomalies near-perfectly. Across three tests on PEMS08
-the time-axis collapse is real and large but downstream-benign, and even mildly costly to
-prevent. See [RESULTS.md](RESULTS.md) for the full tables, the refuted hypotheses, and the next
-experiments worth running.
+same way: both placements detect injected anomalies near-perfectly. A lambda sweep then supplies
+the mechanism and a fourth test: SIGReg and the forecaster are in tension, since raising lambda
+raises effective rank but monotonically worsens dual's forecasting, and final SIGReg loss does
+not track downstream quality, so LeJEPA's label-free selection claim does not transfer to this
+task. Across four tests on PEMS08 the time-axis collapse is real and large but downstream-benign
+and mildly costly to prevent. See [RESULTS.md](RESULTS.md) for the full tables, the refuted
+hypotheses, and the next experiments worth running.
 
 ## Tech stack
 

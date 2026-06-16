@@ -66,8 +66,10 @@ These are the milestones the experiments must compare:
   but a temporally sensitive trajectory probe shows pooled forecasts reliably better (MAE 0.440
   vs 0.457, outside seed noise), refuting the hypothesis that preventing collapse helps this
   task. A horizon sweep (3 to 48 steps) shows pooled's edge is horizon-independent, refuting the
-  persistence explanation, and Mahalanobis anomaly detection saturates for both placements. So
-  collapse is downstream-benign on PEMS08 across three tests. See RESULTS.md.
+  persistence explanation; Mahalanobis anomaly detection saturates for both; and a lambda sweep
+  reveals a SIGReg-vs-forecasting tension (higher lambda raises rank but worsens dual forecasting)
+  and shows label-free selection by SIGReg loss does not transfer here. Collapse is
+  downstream-benign on PEMS08 across four tests. See RESULTS.md.
 - [x] **Phase 6: Label-free model selection.** `label_free_model_selection` ranks runs by
   final SIGReg loss and reports the Spearman correlation with the labeled downstream metric,
   the label-free pick versus the label-based pick, and whether they agree, with a thin CLI.

@@ -134,24 +134,83 @@ while dual stays closer to it (0.9981 against 0.9994), a faint signal in the pre
 But both are at ceiling, so this is not a meaningful downstream advantage. We did not keep
 redesigning anomalies until one favored dual; this is reported as measured.
 
+## PEMS08 lambda sweep (the SIGReg vs forecasting tension, and label-free selection)
+
+Sweeping the single lambda knob across both placements, three seeds, 500 steps, trajectory
+probe at horizon 12. Reproduce with:
+
+```bash
+uv run python scripts/lambda_sweep.py --pems data/pems08.npz --seeds 3 --lambdas 0.1,0.3,0.5,0.7,0.9
+```
+
+| config        | sigreg loss | across-time var | eff rank | trajectory MAE   |
+|---------------|-------------|-----------------|----------|------------------|
+| pooled lam0.1 | 1.158       | 0.094           | 5.48     | 0.3469 +- 0.0026 |
+| pooled lam0.3 | 1.044       | 0.106           | 6.30     | 0.3485 +- 0.0035 |
+| pooled lam0.5 | 1.004       | 0.113           | 6.61     | 0.3473 +- 0.0023 |
+| pooled lam0.7 | 0.973       | 0.118           | 6.80     | 0.3480 +- 0.0019 |
+| pooled lam0.9 | 0.947       | 0.122           | 6.95     | 0.3494 +- 0.0015 |
+| dual lam0.1   | 2.520       | 0.624           | 7.46     | 0.3495 +- 0.0032 |
+| dual lam0.3   | 2.347       | 0.614           | 8.21     | 0.3537 +- 0.0019 |
+| dual lam0.5   | 2.259       | 0.620           | 8.47     | 0.3545 +- 0.0001 |
+| dual lam0.7   | 2.206       | 0.630           | 8.58     | 0.3555 +- 0.0028 |
+| dual lam0.9   | 2.176       | 0.638           | 8.66     | 0.3559 +- 0.0034 |
+
+Three findings.
+
+1. Placement, not lambda, controls the collapse. Across-time variance is about 0.62 for dual
+   and about 0.10 for pooled at every lambda. Lambda has only a mild within-placement effect:
+   more SIGReg weight nudges pooled's variance up from 0.094 to 0.122 and its effective rank
+   from 5.5 to 7.0, but never close to dual. So whether a sequence collapses is set by where
+   SIGReg is applied, and lambda only tunes it slightly.
+
+2. SIGReg and forecasting are in tension. As lambda rises, effective rank rises monotonically
+   for both placements (more isotropy), but forecasting gets worse, clearly for dual: MAE climbs
+   monotonically from 0.3495 at lambda 0.1 to 0.3559 at lambda 0.9, a gap of about two standard
+   deviations end to end. Pooled forecasting stays flat within noise. So the very pressure that
+   raises rank and prevents collapse trades against the forecasting head. This is the mechanism
+   behind the earlier results: preventing the collapse is mildly costly because the isotropic
+   regularization is not what a linear forecaster rewards.
+
+3. Label-free selection by SIGReg loss does not work here, and the naive correlation is
+   confounded. The cross-config Spearman between SIGReg loss and forecasting MAE is 0.552
+   (p = 0.098, ten configs, not significant), and the label-free pick (lowest SIGReg loss,
+   pooled lam0.9) disagrees with the label-based pick (lowest MAE, pooled lam0.1). More
+   importantly, the raw cross-config ranking is not a fair test: DualSIGReg sums a within-time
+   and a between-sample term, so its loss (about 2.2 to 2.5) is on a different scale from pooled
+   (about 0.95 to 1.16), and the positive correlation is mostly the placement effect (pooled is
+   lower on both axes). Within a single placement the relationship is flat for pooled and
+   reversed for dual, where lower SIGReg loss (lambda 0.9) goes with the worst forecasting. So on
+   PEMS08 forecasting, final SIGReg loss is not a reliable label-free selector, which is a
+   non-confirmatory result for that LeJEPA claim on this task, with the caveat that SIGReg loss
+   is only comparable within one objective formulation.
+
 ## Conclusion and next steps
 
 The mechanistic claim holds: the dual placement prevents the time-axis collapse, robustly and by
-a large margin, on real data. The utility claim does not hold on PEMS08. Across three honest
-downstream tests, forecasting (mean and full-trajectory, multi-seed), forecasting swept over
-horizons 3 to 48, and Mahalanobis anomaly detection, preventing the collapse gives no measurable
-benefit: pooled is reliably a little better at forecasting at every horizon, and anomaly
-detection saturates for both. We also ruled out our own leading explanation. The persistence
-hypothesis (pooled wins only because short horizons are easy) predicts the gap should close as
-the horizon grows; the horizon sweep shows it does not, so the explanation is wrong and pooled's
-edge is horizon-independent. The accumulating picture on this benchmark is that the time-axis
-collapse, though real and large, is downstream-benign and even mildly costly to prevent, because
-the collapsed representation still carries the content and level these tasks rely on. This is a
-genuine, non-confirmatory result worth reporting to LeJEPA issue #27.
+a large margin, on real data, and the lambda sweep shows the placement, not the lambda, controls
+it. The utility claim does not hold on PEMS08. Across four honest downstream tests, forecasting
+(mean and full-trajectory, multi-seed), forecasting swept over horizons 3 to 48, Mahalanobis
+anomaly detection, and a lambda sweep, preventing the collapse gives no measurable benefit and is
+mildly costly. We also ruled out our own leading explanation: the persistence hypothesis predicts
+the forecasting gap should close at long horizons, and the horizon sweep shows it does not, so
+pooled's edge is horizon-independent.
 
-What remains open is whether any task genuinely depends on the temporal structure dual preserves,
-and why preventing the collapse costs a little rather than being neutral. Forecasting across
-horizons and a saturating anomaly detector are both insensitive to the distinction. The most
-discriminating untested options are limited-label sequence or regime classification, a weaker
-(non-saturating) anomaly detector, and a sweep over lambda to see whether a different
-SIGReg-to-invariance balance changes the downstream ordering. Longer training is also untested.
+The lambda sweep adds the mechanism. SIGReg and the linear forecaster are in tension: raising
+lambda raises effective rank but monotonically worsens dual's forecasting, so the isotropic
+regularization that prevents the collapse is not what the downstream head rewards. That is why
+preventing the collapse costs a little rather than being neutral. The sweep also tested LeJEPA's
+label-free selection claim on real time series and did not confirm it: final SIGReg loss does not
+track forecasting quality here (flat within pooled, reversed within dual), and the only positive
+correlation across configs is a confound from the two placements having different SIGReg loss
+scales. The overall picture on this benchmark: the time-axis collapse is real and large but
+downstream-benign, the dual placement that fixes it trades slightly against forecasting, and
+SIGReg loss is not a reliable label-free selector for this task.
+
+What remains open is whether any task genuinely depends on the temporal structure dual preserves.
+Forecasting across horizons, a saturating anomaly detector, and the lambda sweep are all
+insensitive to the distinction or actively favor pooled. The most discriminating untested options
+are limited-label sequence or regime classification, a weaker (non-saturating) anomaly detector,
+and longer training. A reasonable working conclusion for LeJEPA issue #27 is that on PEMS-style
+forecasting the time-axis collapse does not need fixing, and the dual term should be reserved for
+tasks that demonstrably depend on per-timestep structure.
