@@ -1,0 +1,12 @@
+# @package _global_
+# A fast end-to-end run on synthetic data, no external dataset required.
+defaults:
+  - override /data: synthetic
+
+steps: 20
+batch_size: 16
+window: 64
+placement: dual
+
+data:
+  num_steps: 600

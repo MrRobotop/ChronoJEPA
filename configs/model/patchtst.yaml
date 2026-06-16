@@ -1,0 +1,6 @@
+name: patchtst
+patch_len: 16
+stride: 8
+d_model: 64
+depth: 3
+n_heads: 4

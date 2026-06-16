@@ -1,0 +1,4 @@
+name: pems
+# Download the PEMS .npz yourself and set this on the command line, for example
+# data.path=/path/to/pems08.npz. It is mandatory and has no default on purpose.
+path: ???

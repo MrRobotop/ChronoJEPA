@@ -1,0 +1,8 @@
+# @package _global_
+# Pooled baseline on PEMS. Set data.path on the command line.
+defaults:
+  - override /data: pems
+
+placement: pooled
+steps: 1000
+window: 96

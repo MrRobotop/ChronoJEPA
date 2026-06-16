@@ -1,0 +1,26 @@
+defaults:
+  - data: synthetic
+  - model: patchtst
+  - optimizer: adamw
+  - _self_
+
+seed: 0
+steps: 50
+placement: dual
+num_slices: 32
+lam: 0.5
+warmup: 5
+batch_size: 32
+window: 96
+stride: 8
+
+augment:
+  jitter_sigma: 0.1
+  scaling_sigma: 0.1
+  mask_ratio: 0.1
+  crop_ratio: 1.0
+
+wandb:
+  enabled: false
+  project: chronojepa
+  mode: offline

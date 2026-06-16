@@ -66,9 +66,12 @@ These are the milestones the experiments must compare:
 - [x] **Phase 6: Label-free model selection.** `label_free_model_selection` ranks runs by
   final SIGReg loss and reports the Spearman correlation with the labeled downstream metric,
   the label-free pick versus the label-based pick, and whether they agree, with a thin CLI.
-- [ ] **Phase 7: Experiment runner, configs, sweeps.** Hydra configs and named experiments
-  (smoke, pems_pooled, pems_dual, pems_structured), `scripts/train.py` as the single entry
-  point, and a sweep over lambda and the three placements.
+- [x] **Phase 7: Experiment runner, configs, sweeps.** Hydra configs grouped into data,
+  model, optimizer, and experiment, with named experiments smoke, pems_pooled, pems_dual,
+  and pems_structured. `scripts/train.py` is the single config-driven entry point, sweeps
+  run via Hydra multirun (`-m placement=pooled,dual,structured lam=...`), and the resolved
+  config is saved per run. The smoke experiment runs on synthetic data; the pems_*
+  experiments need `data.path` set once PEMS is downloaded.
 - [ ] **Phase 8: README, reproducibility, and writeup.** Final README with the placement
   comparison result, and a RESULTS.md with the comparison table and plots.
 

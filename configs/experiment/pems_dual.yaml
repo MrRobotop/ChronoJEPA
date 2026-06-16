@@ -1,0 +1,8 @@
+# @package _global_
+# Dual placement on PEMS. Set data.path on the command line.
+defaults:
+  - override /data: pems
+
+placement: dual
+steps: 1000
+window: 96

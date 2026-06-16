@@ -1,0 +1,4 @@
+name: tcn
+d_model: 64
+kernel_size: 3
+num_layers: 4
