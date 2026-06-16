@@ -25,8 +25,9 @@ tests/      pytest suite
 The whole project is organized around three placements of SIGReg relative to the time axis.
 These are the milestones the experiments must compare:
 
-- [ ] `pooled`: one SIGReg over the pooled sequence embedding. Baseline, expected to
-  collapse to a constant per-sequence "ID vector" along time.
+- [x] `pooled`: one SIGReg over the pooled sequence embedding. Baseline, expected to
+  collapse to a constant per-sequence "ID vector" along time. Implemented and
+  ground-truthed in Phase 1.
 - [ ] `dual`: SIGReg within each sequence across time, plus across samples in the batch.
   Expected to prevent the collapse.
 - [ ] `structured`: a multivariate or joint formulation. Open research question.
@@ -37,10 +38,10 @@ These are the milestones the experiments must compare:
   config, pre-commit, package skeleton with empty modules, a trivial passing test, and
   `scripts/init.sh`. Extended for publishing: MIT license, Python `.gitignore`, README,
   GitHub Actions CI, and this plan.
-- [ ] **Phase 1: SIGReg core, ground-truthed against scipy.** Epps-Pulley univariate test,
+- [x] **Phase 1: SIGReg core, ground-truthed against scipy.** Epps-Pulley univariate test,
   random-slicing wrapper, and `PooledSIGReg`. Tests cross-check the statistic against scipy
-  or a closed form, confirm near-zero loss on `N(0, I)`, confirm gradient flow, and confirm
-  CPU and MPS agreement.
+  quadrature, confirm near-zero loss on `N(0, I)`, confirm gradient flow, and confirm CPU
+  and MPS agreement.
 - [ ] **Phase 2: Encoders and RevIN.** PatchTST-style transformer encoder, a TCN baseline
   with a shared tensor contract, and RevIN with normalize and denormalize.
 - [ ] **Phase 3: Data and augmentations (PEMS first).** Sliding-window PEMS loader, a
