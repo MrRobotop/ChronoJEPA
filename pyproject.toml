@@ -16,6 +16,9 @@ dependencies = [
     "omegaconf>=2,<3",
 ]
 
+[project.optional-dependencies]
+plot = ["matplotlib>=3,<4"]
+
 [dependency-groups]
 dev = [
     "pytest>=8,<9",

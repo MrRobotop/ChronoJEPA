@@ -72,8 +72,11 @@ These are the milestones the experiments must compare:
   run via Hydra multirun (`-m placement=pooled,dual,structured lam=...`), and the resolved
   config is saved per run. The smoke experiment runs on synthetic data; the pems_*
   experiments need `data.path` set once PEMS is downloaded.
-- [ ] **Phase 8: README, reproducibility, and writeup.** Final README with the placement
-  comparison result, and a RESULTS.md with the comparison table and plots.
+- [x] **Phase 8: README, reproducibility, and writeup.** README updated with the placement
+  comparison result and run commands, RESULTS.md with the comparison table and how to
+  reproduce it, `scripts/compare.py` to regenerate the table, and `scripts/plot_results.py`
+  (optional `plot` extra) to render it. Numbers are from a synthetic reference run; PEMS is
+  pending the dataset download.
 
 ## Definition of done (every phase)
 

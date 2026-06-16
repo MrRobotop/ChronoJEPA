@@ -25,22 +25,29 @@ diagnose that collapse and compare three placements of the objective:
    expected to collapse.
 2. `dual`: SIGReg applied within each sequence across time, plus across samples in the
    batch.
-3. `structured`: a multivariate or joint formulation. This is an open research question.
+3. `structured`: a multivariate or joint formulation. This is an open research question, and
+   the repository ships an initial concrete instantiation of it.
 
 Everything in the repository serves measuring which placement prevents collapse and yields
 the best downstream representations.
 
+## Result so far
+
+On a synthetic multivariate run, the pooled baseline collapses along time (across-time
+variance 0.022, effective rank 4.66) while the dual placement does not (0.479 and 8.58), and
+dual forecasting is at least as good as pooled (MSE 0.363 against 0.393, MAE roughly tied).
+The dual placement wins decisively on the collapse diagnostic and is no worse downstream. See
+[RESULTS.md](RESULTS.md) for the full table and how to reproduce it. These numbers are on
+synthetic data; PEMS numbers wait on the dataset download.
+
 ## Tech stack
 
 Python 3.11 or newer and PyTorch 2.x, device-agnostic across CUDA, Apple MPS, and CPU. The
-planned model side is a PatchTST-style transformer encoder with a TCN baseline and RevIN for
-forecasting. Configuration uses Hydra and OmegaConf, experiment logging uses Weights and
-Biases, data handling uses polars and pandas with yfinance for financial series, and
-evaluation uses scipy and scikit-learn. Environments are managed with uv, linting and
-formatting with ruff, tests with pytest, and commit gates with pre-commit.
-
-Dependencies are introduced phase by phase to keep each step minimal. At this stage only
-PyTorch and the development tools are declared.
+model side is a PatchTST-style transformer encoder with a TCN baseline and RevIN. SIGReg
+ground-truthing and evaluation use scipy and scikit-learn, configuration uses Hydra and
+OmegaConf, and experiment logging uses Weights and Biases (optional, offline by default).
+Environments are managed with uv, linting and formatting with ruff, tests with pytest, and
+commit gates with pre-commit. The SIGReg core itself depends only on torch.
 
 ## Install
 
@@ -53,11 +60,34 @@ uv sync
 
 ## Quickstart
 
-The fastest way to verify a clean checkout is the one-shot script, which creates the
-environment, installs dependencies, lints, and runs the tests:
+Verify a clean checkout in one command (creates the environment, lints, and runs the tests):
 
 ```bash
 bash scripts/init.sh
+```
+
+Run a fast end-to-end training smoke on synthetic data:
+
+```bash
+uv run python scripts/train.py +experiment=smoke
+```
+
+Reproduce the placement comparison table:
+
+```bash
+uv run python scripts/compare.py
+```
+
+Sweep over the placements and the lambda tradeoff with Hydra multirun:
+
+```bash
+uv run python scripts/train.py -m placement=pooled,dual,structured lam=0.1,0.5,0.9
+```
+
+Train on PEMS once you have downloaded the dataset:
+
+```bash
+uv run python scripts/train.py +experiment=pems_dual data.path=/path/to/pems.npz
 ```
 
 ## Running the tests
@@ -78,21 +108,15 @@ uv run ruff format --check .
 ```
 chronojepa/
   sigreg/   SIGReg objective: univariate tests, random slicing, placement variants
-  models/   encoders (PatchTST, TCN), optional MLP predictor, RevIN
+  models/   encoders (PatchTST, TCN), an MLP predictor, RevIN
   data/     dataset loaders and time-series augmentations
-  train/    trainer and training loop
-  eval/     probes, forecasting, anomaly scoring, label-free model selection
+  train/    training loop and the config-driven experiment runner
+  eval/     probes, forecasting, collapse diagnostics, anomaly scoring, model selection
   utils/    seeding, device selection, logging
-configs/    Hydra configs
-scripts/    runnable entry points
+configs/    Hydra configs (data, model, optimizer, named experiments)
+scripts/    runnable entry points (init.sh, train.py, compare.py, plot_results.py)
 tests/      pytest suite
 ```
-
-## Status
-
-This is the Phase 0 scaffold: project layout, tooling, and a passing test harness. The
-build plan and the placement milestones are tracked in [PLAN.md](PLAN.md). Behavior is
-implemented in later phases.
 
 ## Citation
 
