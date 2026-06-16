@@ -63,8 +63,9 @@ These are the milestones the experiments must compare:
   run, pooled collapsed (across-time variance 0.022, effective rank 4.66) while dual did not
   (0.479, 8.58), and dual forecasting was at least as good (MSE 0.363 vs 0.393). PEMS numbers
   pending the dataset download.
-- [ ] **Phase 6: Label-free model selection.** Rank runs by final SIGReg loss and report the
-  Spearman correlation with the labeled downstream metric.
+- [x] **Phase 6: Label-free model selection.** `label_free_model_selection` ranks runs by
+  final SIGReg loss and reports the Spearman correlation with the labeled downstream metric,
+  the label-free pick versus the label-based pick, and whether they agree, with a thin CLI.
 - [ ] **Phase 7: Experiment runner, configs, sweeps.** Hydra configs and named experiments
   (smoke, pems_pooled, pems_dual, pems_structured), `scripts/train.py` as the single entry
   point, and a sweep over lambda and the three placements.
