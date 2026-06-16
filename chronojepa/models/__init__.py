@@ -5,7 +5,8 @@ Shared encoder contract: a forward call maps ``(B, C, T)`` to ``(tokens, pooled)
 """
 
 from .patchtst import PatchTSTEncoder
+from .predictor import MLPPredictor
 from .revin import RevIN
 from .tcn import TCNEncoder
 
-__all__ = ["PatchTSTEncoder", "RevIN", "TCNEncoder"]
+__all__ = ["MLPPredictor", "PatchTSTEncoder", "RevIN", "TCNEncoder"]

@@ -28,9 +28,11 @@ These are the milestones the experiments must compare:
 - [x] `pooled`: one SIGReg over the pooled sequence embedding. Baseline, expected to
   collapse to a constant per-sequence "ID vector" along time. Implemented and
   ground-truthed in Phase 1.
-- [ ] `dual`: SIGReg within each sequence across time, plus across samples in the batch.
-  Expected to prevent the collapse.
-- [ ] `structured`: a multivariate or joint formulation. Open research question.
+- [x] `dual`: SIGReg within each sequence across time, plus across samples in the batch.
+  Expected to prevent the collapse. Implemented in Phase 4.
+- [x] `structured`: a multivariate or joint formulation. Open research question. Phase 4
+  ships an initial concrete instantiation: regularize the joint `(N * L, D)` set to
+  N(0, I). The richer formulation remains open.
 
 ## Phase checklist
 
@@ -50,9 +52,11 @@ These are the milestones the experiments must compare:
   and a `WindowDataset` plus `build_dataloaders` factory. No look-ahead bias: statistics
   fit on the train split only and applied forward. `load_pems` reads a user-downloaded
   `.npz`; the real download is left to the user and is not yet wired into a run.
-- [ ] **Phase 4: SIGReg placements and training loop.** `DualSIGReg` and `StructuredSIGReg`
-  behind a common interface selectable by config, the combined LeJEPA objective with a single
-  lambda tradeoff, and a minimal device-agnostic training loop with W&B logging.
+- [x] **Phase 4: SIGReg placements and training loop.** `DualSIGReg` and `StructuredSIGReg`
+  behind a common interface (`make_sigreg(name)`), the combined LeJEPA objective
+  `lam * sigreg + (1 - lam) * invariance` with an optional MLP predictor, and a minimal
+  device-agnostic, seeded training loop with cosine-warmup schedule and pluggable logging
+  (offline `RunLogger` by default, opt-in `WandbLogger`).
 - [ ] **Phase 5: Collapse diagnostics and downstream evaluation.** Across-time variance and
   effective rank diagnostics, frozen-encoder linear and kNN probes, a forecasting head, and a
   Mahalanobis anomaly scorer. Compare pooled against dual.

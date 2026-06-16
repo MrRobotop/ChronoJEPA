@@ -5,4 +5,8 @@ import torch
 
 def get_device() -> torch.device:
     """Resolve the compute device once, preferring CUDA, then Apple MPS, then CPU."""
-    raise NotImplementedError
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    if torch.backends.mps.is_available():
+        return torch.device("mps")
+    return torch.device("cpu")
