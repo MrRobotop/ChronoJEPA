@@ -18,6 +18,7 @@ dependencies = [
 
 [project.optional-dependencies]
 plot = ["matplotlib>=3,<4"]
+wandb = ["wandb>=0,<1"]
 
 [dependency-groups]
 dev = [
