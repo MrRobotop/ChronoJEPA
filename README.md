@@ -33,12 +33,15 @@ the best downstream representations.
 
 ## Result so far
 
-On a synthetic multivariate run, the pooled baseline collapses along time (across-time
-variance 0.022, effective rank 4.66) while the dual placement does not (0.479 and 8.58), and
-dual forecasting is at least as good as pooled (MSE 0.363 against 0.393, MAE roughly tied).
-The dual placement wins decisively on the collapse diagnostic and is no worse downstream. See
-[RESULTS.md](RESULTS.md) for the full table and how to reproduce it. These numbers are on
-synthetic data; PEMS numbers wait on the dataset download.
+On the real PEMS08 traffic benchmark, the pooled baseline collapses along time (across-time
+variance 0.070, effective rank 8.13) while the dual placement does not (0.602 and 11.21),
+about 8.5 times more across-time variance. So the central claim, that the dual placement
+prevents the time-axis collapse, holds on real data. The downstream story is more nuanced: on
+a linear forecasting probe the two are roughly tied, with pooled marginally ahead (MSE 0.256
+against 0.260), most likely because predicting the next-horizon mean rewards the overall level
+that even a collapsed representation retains. A synthetic sanity run agrees on the collapse and
+is more favorable to dual downstream. See [RESULTS.md](RESULTS.md) for both tables, the honest
+caveats, and how to reproduce them.
 
 ## Tech stack
 

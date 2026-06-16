@@ -33,6 +33,10 @@ def main(argv: list[str] | None = None) -> dict:
     parser = argparse.ArgumentParser(description="Run the SIGReg placement comparison")
     parser.add_argument("--pems", help="path to a PEMS .npz; uses synthetic data if omitted")
     parser.add_argument("--steps", type=int, default=300)
+    parser.add_argument("--batch-size", type=int, default=64)
+    parser.add_argument("--d-model", type=int, default=64)
+    parser.add_argument("--num-slices", type=int, default=48)
+    parser.add_argument("--window", type=int, default=96)
     parser.add_argument("--out", default="results/placement_comparison.json")
     args = parser.parse_args(argv)
 
@@ -41,12 +45,12 @@ def main(argv: list[str] | None = None) -> dict:
         series,
         placements=("pooled", "dual"),
         steps=args.steps,
-        window=96,
+        window=args.window,
         horizon=12,
         stride=8,
-        batch_size=64,
-        d_model=64,
-        num_slices=48,
+        batch_size=args.batch_size,
+        d_model=args.d_model,
+        num_slices=args.num_slices,
         lam=0.5,
         seed=0,
         results_path=args.out,

@@ -4,50 +4,73 @@ This file records the placement comparison that the project was built to measure
 choice of where SIGReg is applied relative to the time axis prevent the time-axis collapse
 described in LeJEPA issue #27, and does it help downstream?
 
-## The comparison
+There are two runs below: a synthetic sanity run and the real PEMS08 benchmark. The headline
+finding (the `dual` placement prevents the collapse) holds in both. The downstream story is
+more nuanced on real data, and is reported here honestly.
 
-The numbers below are from a reference run on synthetic multivariate data (three channels of
-mixed-frequency sinusoids plus noise, 2400 steps), training each placement for 300 steps with
-identical settings (seed 0, PatchTST encoder, d_model 64, 48 slices, lambda 0.5). They were
-produced on Apple MPS. Reproduce them with:
+## PEMS08 (real data)
+
+PEMS08 is California highway traffic: 170 sensors, 17856 five-minute steps, here reduced to
+one channel (traffic flow) per sensor. The dataset (about 17.7 MB) comes from the ASTGCN
+repository (`data/PEMS08/pems08.npz` in github.com/wanhuaiyu/ASTGCN). Numbers are from seed 0,
+500 steps per placement, PatchTST encoder (d_model 64, depth 2), 32 slices, lambda 0.5,
+window 96, horizon 12, on Apple MPS. Reproduce with:
 
 ```bash
-uv run python scripts/compare.py
+uv run python scripts/compare.py --pems data/pems08.npz --steps 500 --batch-size 32 --num-slices 32
 ```
 
 | placement | across-time variance | effective rank | forecast MAE | forecast MSE |
 |-----------|----------------------|----------------|--------------|--------------|
-| pooled    | 0.022337             | 4.664          | 0.4701       | 0.3926       |
-| dual      | 0.479007             | 8.581          | 0.4857       | 0.3632       |
+| pooled    | 0.0705               | 8.13           | 0.2583       | 0.2564       |
+| dual      | 0.6023               | 11.21          | 0.2606       | 0.2597       |
 
-## What it shows
+What it shows. The collapse result is clear and survives on real data: `dual` has about 8.5
+times the across-time variance of `pooled` (0.602 against 0.070) and a higher effective rank
+(11.2 against 8.1), so `pooled` is collapsing each sequence toward a near-constant vector over
+time while `dual` is not.
 
-The `pooled` baseline collapses along time. Its across-time variance is 0.022, roughly 21
-times lower than `dual` at 0.479, which is the signature of each sequence converging to a
-near-constant "ID vector" over time. Its effective rank is also far lower (4.66 against 8.58),
-so the pooled representation occupies a more degenerate subspace.
+The downstream story differs from the synthetic run. On this linear forecasting probe `pooled`
+is marginally better than `dual` (MAE 0.258 against 0.261, MSE 0.256 against 0.260), a gap of
+roughly one percent that is within plausible run-to-run noise for a single seed. A likely
+reason is that the probe predicts the per-channel mean over the next horizon, and the collapsed
+"ID vector" that `pooled` learns still encodes a sequence's overall level, which is most of what
+predicting a near-future mean needs. In other words, this particular probe is fairly insensitive
+to the collapse. A downstream task that depends on temporal detail would be a fairer test of
+whether preventing collapse helps, and that is the natural next experiment.
 
-The `dual` placement prevents that collapse, because its within-sequence term asks the
-per-timestep embeddings of each sequence to look like an isotropic Gaussian, which is
-maximally violated by a constant-over-time sequence. On downstream forecasting, `dual` is at
-least as good as `pooled`: its MSE is lower (0.363 against 0.393, about 8 percent) and its MAE
-is roughly tied. So on this run, `dual` wins on the collapse diagnostic decisively and is no
-worse, slightly better, downstream.
+So on PEMS08, preventing the collapse (the central claim) is confirmed, while the claim that
+preventing it improves this specific forecasting probe is not. Both are reported as measured.
+
+## Synthetic sanity run
+
+A fixed synthetic series (three mixed-frequency channels plus noise, 2400 steps), 300 steps per
+placement. Reproduce with `uv run python scripts/compare.py`.
+
+| placement | across-time variance | effective rank | forecast MAE | forecast MSE |
+|-----------|----------------------|----------------|--------------|--------------|
+| pooled    | 0.0223               | 4.66           | 0.4701       | 0.3926       |
+| dual      | 0.4790               | 8.58           | 0.4857       | 0.3632       |
+
+Here `dual` both prevents the collapse (across-time variance 0.479 against 0.022) and gives a
+lower forecasting MSE (0.363 against 0.393). The collapse result agrees with PEMS08; the
+forecasting result is more favorable to `dual` than on real data.
 
 ## Plot
 
-Render bar charts of the three headline metrics from the saved JSON:
+Render bar charts of the headline metrics from a saved JSON:
 
 ```bash
 uv sync --extra plot
-uv run python scripts/plot_results.py results/placement_comparison.json
+uv run python scripts/plot_results.py results/placement_comparison_pems.json
 ```
 
 ## Limitations and honesty about scope
 
-These numbers are on synthetic data, not on a published benchmark. The PEMS path is wired but
-the dataset has not been downloaded, so there are no PEMS forecasting numbers yet; run
-`scripts/compare.py --pems /path/to/pems.npz` once you have the file. The `structured`
-placement is an initial concrete instantiation of an open question, not a tuned method.
-Hyperparameters were not swept for these numbers. The qualitative result (pooled collapses,
-dual does not) is robust to the random seed; exact values depend on hardware and backend.
+The collapse-prevention finding is robust across synthetic and real data and across the random
+seed. The downstream forecasting comparison is single-seed and the PEMS gap is about one percent,
+so it should be read as "roughly tied, pooled marginally ahead on this probe" rather than a firm
+ranking. The `structured` placement is an initial concrete instantiation of an open question, not
+a tuned method. Hyperparameters were not swept. PEMS08 is reduced to one feature (flow) per
+sensor. The clear next steps are multi-seed runs, a sweep over lambda, and a downstream task that
+depends on temporal structure rather than a horizon mean.

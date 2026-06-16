@@ -61,8 +61,10 @@ These are the milestones the experiments must compare:
   effective rank diagnostics, frozen-encoder linear and kNN probes, a forecasting head, and a
   Mahalanobis anomaly scorer, plus `run_placement_comparison`. On a synthetic multivariate
   run, pooled collapsed (across-time variance 0.022, effective rank 4.66) while dual did not
-  (0.479, 8.58), and dual forecasting was at least as good (MSE 0.363 vs 0.393). PEMS numbers
-  pending the dataset download.
+  (0.479, 8.58), and dual forecasting was at least as good (MSE 0.363 vs 0.393). Confirmed on
+  real PEMS08: dual prevents the collapse (across-time variance 0.602 vs 0.070, effective rank
+  11.21 vs 8.13), though on the linear forecasting probe pooled is marginally ahead (within
+  noise), see RESULTS.md.
 - [x] **Phase 6: Label-free model selection.** `label_free_model_selection` ranks runs by
   final SIGReg loss and reports the Spearman correlation with the labeled downstream metric,
   the label-free pick versus the label-based pick, and whether they agree, with a thin CLI.
@@ -75,8 +77,8 @@ These are the milestones the experiments must compare:
 - [x] **Phase 8: README, reproducibility, and writeup.** README updated with the placement
   comparison result and run commands, RESULTS.md with the comparison table and how to
   reproduce it, `scripts/compare.py` to regenerate the table, and `scripts/plot_results.py`
-  (optional `plot` extra) to render it. Numbers are from a synthetic reference run; PEMS is
-  pending the dataset download.
+  (optional `plot` extra) to render it. RESULTS.md reports both the synthetic sanity run and
+  the real PEMS08 benchmark, with honest caveats on the downstream comparison.
 
 ## Definition of done (every phase)
 
