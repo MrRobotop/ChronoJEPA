@@ -57,9 +57,12 @@ These are the milestones the experiments must compare:
   `lam * sigreg + (1 - lam) * invariance` with an optional MLP predictor, and a minimal
   device-agnostic, seeded training loop with cosine-warmup schedule and pluggable logging
   (offline `RunLogger` by default, opt-in `WandbLogger`).
-- [ ] **Phase 5: Collapse diagnostics and downstream evaluation.** Across-time variance and
+- [x] **Phase 5: Collapse diagnostics and downstream evaluation.** Across-time variance and
   effective rank diagnostics, frozen-encoder linear and kNN probes, a forecasting head, and a
-  Mahalanobis anomaly scorer. Compare pooled against dual.
+  Mahalanobis anomaly scorer, plus `run_placement_comparison`. On a synthetic multivariate
+  run, pooled collapsed (across-time variance 0.022, effective rank 4.66) while dual did not
+  (0.479, 8.58), and dual forecasting was at least as good (MSE 0.363 vs 0.393). PEMS numbers
+  pending the dataset download.
 - [ ] **Phase 6: Label-free model selection.** Rank runs by final SIGReg loss and report the
   Spearman correlation with the labeled downstream metric.
 - [ ] **Phase 7: Experiment runner, configs, sweeps.** Hydra configs and named experiments
