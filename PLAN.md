@@ -45,9 +45,11 @@ These are the milestones the experiments must compare:
 - [x] **Phase 2: Encoders and RevIN.** PatchTST-style transformer encoder, a TCN baseline
   with a shared tensor contract `(B, C, T) -> (tokens (B, L, D), pooled (B, D))`, and RevIN
   with normalize and denormalize.
-- [ ] **Phase 3: Data and augmentations (PEMS first).** Sliding-window PEMS loader, a
-  two-view augmentation pipeline, and a Dataset plus DataLoader factory. No look-ahead bias:
-  normalization statistics computed on the train split only and applied forward.
+- [x] **Phase 3: Data and augmentations (PEMS first).** Time-ordered splits, sliding
+  windows, a train-only `StandardScaler`, a config-driven two-view augmentation pipeline,
+  and a `WindowDataset` plus `build_dataloaders` factory. No look-ahead bias: statistics
+  fit on the train split only and applied forward. `load_pems` reads a user-downloaded
+  `.npz`; the real download is left to the user and is not yet wired into a run.
 - [ ] **Phase 4: SIGReg placements and training loop.** `DualSIGReg` and `StructuredSIGReg`
   behind a common interface selectable by config, the combined LeJEPA objective with a single
   lambda tradeoff, and a minimal device-agnostic training loop with W&B logging.
