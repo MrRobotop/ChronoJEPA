@@ -48,6 +48,35 @@ may even cost a little. So on PEMS08 the answer is that collapse and downstream 
 quality are decoupled: you can prevent the collapse without improving, and slightly worsening,
 this particular forecast.
 
+## PEMS08 forecasting vs horizon (refutes the persistence explanation)
+
+The explanation above was a hypothesis: pooled wins because short-horizon traffic is near
+persistence, so the gap should shrink or reverse as the horizon grows and persistence breaks
+down. We tested it directly with a horizon sweep (trajectory probe, three seeds, each encoder
+trained once and probed at every horizon). Reproduce with:
+
+```bash
+uv run python scripts/horizon_sweep.py --pems data/pems08.npz --seeds 3 --horizons 3,6,12,24,48
+```
+
+| horizon | pooled MAE | dual MAE | gap (dual minus pooled) |
+|---------|------------|----------|--------------------------|
+| 3       | 0.3395 +- 0.0011 | 0.3453 +- 0.0021 | +0.0058 |
+| 6       | 0.3422 +- 0.0013 | 0.3489 +- 0.0012 | +0.0067 |
+| 12      | 0.3473 +- 0.0023 | 0.3545 +- 0.0001 | +0.0072 |
+| 24      | 0.3617 +- 0.0044 | 0.3669 +- 0.0033 | +0.0051 |
+| 48      | 0.3805 +- 0.0073 | 0.3854 +- 0.0069 | +0.0049 |
+
+The hypothesis is refuted. Pooled stays about 0.005 to 0.007 MAE better at every horizon from 3
+(fifteen minutes) to 48 (four hours), with no shrinking and no reversal, and the gap exceeds the
+seed spread at the short and middle horizons. Absolute error grows with horizon for both, as
+expected, but the ordering is stable. So pooled's edge is not a near-persistence artifact: the
+collapsed representation is simply, modestly, and reliably better for this forecasting task
+across the whole horizon range. Why preventing the collapse costs a little here, rather than
+being merely neutral, is the open question; a plausible read is that the within-sequence SIGReg
+term spends representational capacity making each sequence isotropic over time, which is real
+structure but not what a linear forecasting head rewards.
+
 ## PEMS08, single seed, mean probe (earlier run, for context)
 
 The first PEMS run used the simpler mean probe (predict the next-horizon per-channel mean from
@@ -108,16 +137,21 @@ redesigning anomalies until one favored dual; this is reported as measured.
 ## Conclusion and next steps
 
 The mechanistic claim holds: the dual placement prevents the time-axis collapse, robustly and by
-a large margin, on real data. The utility claim does not hold on PEMS08. Across two honest
-downstream tests, forecasting (single and full-trajectory, multi-seed) and Mahalanobis anomaly
-detection, preventing the collapse gives no measurable benefit: forecasting slightly favors
-pooled, and anomaly detection saturates for both. The accumulating picture on this benchmark is
-that the time-axis collapse, though real and large, is downstream-benign here, because the
-collapsed representation still carries the content and level these tasks rely on. This is a
+a large margin, on real data. The utility claim does not hold on PEMS08. Across three honest
+downstream tests, forecasting (mean and full-trajectory, multi-seed), forecasting swept over
+horizons 3 to 48, and Mahalanobis anomaly detection, preventing the collapse gives no measurable
+benefit: pooled is reliably a little better at forecasting at every horizon, and anomaly
+detection saturates for both. We also ruled out our own leading explanation. The persistence
+hypothesis (pooled wins only because short horizons are easy) predicts the gap should close as
+the horizon grows; the horizon sweep shows it does not, so the explanation is wrong and pooled's
+edge is horizon-independent. The accumulating picture on this benchmark is that the time-axis
+collapse, though real and large, is downstream-benign and even mildly costly to prevent, because
+the collapsed representation still carries the content and level these tasks rely on. This is a
 genuine, non-confirmatory result worth reporting to LeJEPA issue #27.
 
-What remains open is whether any task genuinely depends on the temporal structure dual preserves.
-Forecasting near persistence and a saturating anomaly detector are both insensitive to it. More
-discriminating tests would be limited-label sequence or regime classification, long-horizon
-forecasting where persistence breaks down, or a weaker anomaly detector that is not already at
-ceiling. A lambda sweep and longer training are also untested levers.
+What remains open is whether any task genuinely depends on the temporal structure dual preserves,
+and why preventing the collapse costs a little rather than being neutral. Forecasting across
+horizons and a saturating anomaly detector are both insensitive to the distinction. The most
+discriminating untested options are limited-label sequence or regime classification, a weaker
+(non-saturating) anomaly detector, and a sweep over lambda to see whether a different
+SIGReg-to-invariance balance changes the downstream ordering. Longer training is also untested.

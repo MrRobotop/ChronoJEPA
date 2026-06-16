@@ -40,13 +40,14 @@ the seed-to-seed bands. So the central mechanistic claim holds firmly on real da
 surprise is downstream: preventing the collapse does not help this task. Even with a temporally
 sensitive probe (predict the full horizon trajectory from the token sequence), pooled forecasts
 reliably better than dual (MAE 0.440 against 0.457), and the gap sits outside the seed noise.
-Short-horizon traffic forecasting is close to persistence, so the level that a collapsed
-representation retains is most of what the task needs. A second downstream test, Mahalanobis
-anomaly detection on token features, points the same way: both placements detect injected
-anomalies near-perfectly, so preventing the collapse gives no measurable benefit there either.
-Across both tests on PEMS08 the time-axis collapse is real and large but downstream-benign. See
-[RESULTS.md](RESULTS.md) for the full tables, the refuted hypotheses, and the next experiments
-worth running.
+We then ruled out the obvious explanation. The guess that pooled wins only because short
+horizons are near persistence predicts the gap should close at longer horizons; a horizon sweep
+from 3 to 48 steps shows it does not, so pooled's small edge is horizon-independent, not a
+persistence artifact. A third test, Mahalanobis anomaly detection on token features, points the
+same way: both placements detect injected anomalies near-perfectly. Across three tests on PEMS08
+the time-axis collapse is real and large but downstream-benign, and even mildly costly to
+prevent. See [RESULTS.md](RESULTS.md) for the full tables, the refuted hypotheses, and the next
+experiments worth running.
 
 ## Tech stack
 

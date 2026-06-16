@@ -372,6 +372,106 @@ def run_anomaly_comparison(
     return aggregate
 
 
+def run_horizon_sweep(
+    series: np.ndarray,
+    *,
+    horizons: tuple[int, ...] = (3, 6, 12, 24, 48),
+    placements: tuple[str, ...] = ("pooled", "dual"),
+    seeds: tuple[int, ...] = (0, 1, 2),
+    steps: int = 500,
+    window: int = 96,
+    stride: int = 8,
+    batch_size: int = 32,
+    d_model: int = 32,
+    num_slices: int = 32,
+    lam: float = 0.5,
+    device: torch.device | None = None,
+    results_path: str | Path | None = None,
+) -> dict[str, dict[str, dict[str, dict[str, float]]]]:
+    """Trajectory-forecasting MAE and MSE per placement as the horizon grows.
+
+    Each (placement, seed) encoder is trained once, then the trajectory probe is fit at every
+    horizon on the frozen token features, so the only thing that varies across horizons is the
+    task. Tests whether dual's preserved temporal structure helps more once short-horizon
+    persistence breaks down. Returns ``{horizon: {placement: {mae|mse: {mean, std, values}}}}``.
+    """
+    device = device or get_device()
+    raw = {h: {p: {"mae": [], "mse": []} for p in placements} for h in horizons}
+
+    for seed in seeds:
+        for placement in placements:
+            encoder, scaler, splits = _train_placement(
+                series,
+                placement,
+                steps=steps,
+                window=window,
+                stride=stride,
+                batch_size=batch_size,
+                d_model=d_model,
+                num_slices=num_slices,
+                lam=lam,
+                seed=seed,
+                device=device,
+            )
+            normalized = scaler.transform(series)
+            for horizon in horizons:
+                x_train, y_train = _forecast_windows(
+                    normalized, *splits["train"], window, horizon, stride, mode="trajectory"
+                )
+                x_val, y_val = _forecast_windows(
+                    normalized, *splits["val"], window, horizon, stride, mode="trajectory"
+                )
+                forecast = forecast_linear_probe(
+                    extract_features(encoder, torch.from_numpy(x_train), device, pool=False),
+                    y_train,
+                    extract_features(encoder, torch.from_numpy(x_val), device, pool=False),
+                    y_val,
+                )
+                raw[horizon][placement]["mae"].append(forecast["mae"])
+                raw[horizon][placement]["mse"].append(forecast["mse"])
+
+    aggregate: dict[str, dict[str, dict[str, dict[str, float]]]] = {}
+    for horizon in horizons:
+        aggregate[str(horizon)] = {}
+        for placement in placements:
+            aggregate[str(horizon)][placement] = {}
+            for metric in ("mae", "mse"):
+                values = raw[horizon][placement][metric]
+                aggregate[str(horizon)][placement][metric] = {
+                    "mean": float(np.mean(values)),
+                    "std": float(np.std(values)),
+                    "values": [float(v) for v in values],
+                }
+
+    if results_path is not None:
+        path = Path(results_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(aggregate, indent=2))
+    return aggregate
+
+
+def format_horizon_table(aggregate: dict[str, dict[str, dict[str, dict[str, float]]]]) -> str:
+    """Render horizon vs placement trajectory MAE (mean +- std) and the dual minus pooled gap."""
+    placements = list(next(iter(aggregate.values())))
+    header = (
+        f"{'horizon':<8}"
+        + "".join(f"{p + ' MAE':>20}" for p in placements)
+        + f"{'dual-pooled':>14}"
+    )
+    lines = [header, "-" * len(header)]
+    for horizon, per_placement in aggregate.items():
+        cells = [f"{horizon:<8}"]
+        means = {}
+        for placement in placements:
+            entry = per_placement[placement]["mae"]
+            means[placement] = entry["mean"]
+            cells.append(f"{entry['mean']:.4f}+-{entry['std']:.4f}".rjust(20))
+        if "pooled" in means and "dual" in means:
+            cells.append(f"{means['dual'] - means['pooled']:+.4f}".rjust(14))
+        lines.append("".join(cells))
+    return "\n".join(lines)
+
+
 def format_anomaly_table(aggregate: dict[str, dict[str, dict[str, float]]]) -> str:
     """Render the anomaly comparison as placement vs anomaly-kind AUROC, mean plus or minus std."""
     kinds = list(next(iter(aggregate.values())))
