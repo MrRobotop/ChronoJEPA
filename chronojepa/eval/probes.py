@@ -10,18 +10,25 @@ from torch import Tensor, nn
 
 @torch.no_grad()
 def extract_features(
-    encoder: nn.Module, windows: Tensor, device: torch.device, batch_size: int = 256
+    encoder: nn.Module,
+    windows: Tensor,
+    device: torch.device,
+    batch_size: int = 256,
+    pool: bool = True,
 ) -> np.ndarray:
-    """Run a frozen encoder over ``(N, C, T)`` windows and return pooled features.
+    """Run a frozen encoder over ``(N, C, T)`` windows and return features.
 
+    With ``pool`` the pooled embedding ``(N, D)`` is returned; otherwise the flattened token
+    sequence ``(N, L * D)``, which keeps the temporal structure a collapsed encoder loses.
     The encoder is set to eval and wrapped in no_grad, so no gradients reach the backbone.
     """
     encoder = encoder.to(device).eval()
     outputs = []
     for start in range(0, windows.shape[0], batch_size):
         batch = windows[start : start + batch_size].to(device)
-        _, pooled = encoder(batch)
-        outputs.append(pooled.cpu())
+        tokens, pooled = encoder(batch)
+        feature = pooled if pool else tokens.reshape(tokens.shape[0], -1)
+        outputs.append(feature.cpu())
     return torch.cat(outputs, dim=0).numpy()
 
 

@@ -14,7 +14,12 @@ import argparse
 import numpy as np
 
 from chronojepa.data import load_pems
-from chronojepa.eval import format_comparison_table, run_placement_comparison
+from chronojepa.eval import (
+    format_comparison_table,
+    format_multiseed_table,
+    run_multiseed_comparison,
+    run_placement_comparison,
+)
 
 
 def _synthetic_series() -> np.ndarray:
@@ -37,12 +42,19 @@ def main(argv: list[str] | None = None) -> dict:
     parser.add_argument("--d-model", type=int, default=64)
     parser.add_argument("--num-slices", type=int, default=48)
     parser.add_argument("--window", type=int, default=96)
+    parser.add_argument(
+        "--forecast",
+        choices=("mean", "trajectory"),
+        default="mean",
+        help="mean probes pooled features vs the horizon mean; trajectory probes the "
+        "flattened token sequence vs the full horizon (temporally sensitive)",
+    )
+    parser.add_argument("--seeds", type=int, default=1, help="aggregate over seeds 0..N-1")
     parser.add_argument("--out", default="results/placement_comparison.json")
     args = parser.parse_args(argv)
 
     series = load_pems(args.pems) if args.pems else _synthetic_series()
-    results = run_placement_comparison(
-        series,
+    common = dict(
         placements=("pooled", "dual"),
         steps=args.steps,
         window=args.window,
@@ -52,10 +64,17 @@ def main(argv: list[str] | None = None) -> dict:
         d_model=args.d_model,
         num_slices=args.num_slices,
         lam=0.5,
-        seed=0,
-        results_path=args.out,
+        forecast_mode=args.forecast,
     )
-    print(format_comparison_table(results))
+
+    if args.seeds > 1:
+        results = run_multiseed_comparison(
+            series, seeds=tuple(range(args.seeds)), results_path=args.out, **common
+        )
+        print(format_multiseed_table(results))
+    else:
+        results = run_placement_comparison(series, seed=0, results_path=args.out, **common)
+        print(format_comparison_table(results))
     print(f"\nsaved: {args.out}")
     return results
 

@@ -33,15 +33,17 @@ the best downstream representations.
 
 ## Result so far
 
-On the real PEMS08 traffic benchmark, the pooled baseline collapses along time (across-time
-variance 0.070, effective rank 8.13) while the dual placement does not (0.602 and 11.21),
-about 8.5 times more across-time variance. So the central claim, that the dual placement
-prevents the time-axis collapse, holds on real data. The downstream story is more nuanced: on
-a linear forecasting probe the two are roughly tied, with pooled marginally ahead (MSE 0.256
-against 0.260), most likely because predicting the next-horizon mean rewards the overall level
-that even a collapsed representation retains. A synthetic sanity run agrees on the collapse and
-is more favorable to dual downstream. See [RESULTS.md](RESULTS.md) for both tables, the honest
-caveats, and how to reproduce them.
+On the real PEMS08 traffic benchmark, across five seeds, the dual placement robustly prevents
+the time-axis collapse: it keeps about 9.5 times the across-time variance of the pooled baseline
+(0.607 against 0.064) and a clearly higher effective rank (11.5 against 8.1), with no overlap in
+the seed-to-seed bands. So the central mechanistic claim holds firmly on real data. The honest
+surprise is downstream: preventing the collapse does not help this task. Even with a temporally
+sensitive probe (predict the full horizon trajectory from the token sequence), pooled forecasts
+reliably better than dual (MAE 0.440 against 0.457), and the gap sits outside the seed noise.
+Short-horizon traffic forecasting is close to persistence, so the level that a collapsed
+representation retains is most of what the task needs. Collapse and forecasting quality are
+decoupled here. See [RESULTS.md](RESULTS.md) for the full tables, the refuted hypothesis, and
+the next experiments worth running.
 
 ## Tech stack
 
