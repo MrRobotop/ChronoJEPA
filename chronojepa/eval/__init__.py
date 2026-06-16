@@ -1,10 +1,12 @@
 """Linear and kNN probes, forecasting, Mahalanobis anomaly scoring, label-free selection."""
 
-from .anomaly import MahalanobisScorer
+from .anomaly import MahalanobisScorer, inject_anomaly
 from .collapse import across_time_variance, collapse_report, effective_rank
 from .comparison import (
+    format_anomaly_table,
     format_comparison_table,
     format_multiseed_table,
+    run_anomaly_comparison,
     run_multiseed_comparison,
     run_placement_comparison,
 )
@@ -18,11 +20,14 @@ __all__ = [
     "effective_rank",
     "extract_features",
     "forecast_linear_probe",
+    "format_anomaly_table",
     "format_comparison_table",
     "format_multiseed_table",
+    "inject_anomaly",
     "knn_probe",
     "label_free_model_selection",
     "linear_probe",
+    "run_anomaly_comparison",
     "run_multiseed_comparison",
     "run_placement_comparison",
     "selection_report",

@@ -5,14 +5,16 @@ from pathlib import Path
 
 import numpy as np
 import torch
+from sklearn.metrics import roc_auc_score
 
-from chronojepa.data import TwoViewAugmentation, build_dataloaders
+from chronojepa.data import TwoViewAugmentation, build_dataloaders, sliding_windows
 from chronojepa.models import PatchTSTEncoder
 from chronojepa.sigreg import make_sigreg
 from chronojepa.train import train
 from chronojepa.utils.devices import get_device
 from chronojepa.utils.seed import set_seed
 
+from .anomaly import MahalanobisScorer, inject_anomaly
 from .collapse import collapse_report
 from .probes import extract_features, forecast_linear_probe
 
@@ -211,4 +213,174 @@ def format_multiseed_table(aggregate: dict[str, dict[str, dict[str, float]]]) ->
             entry = metrics[metric]
             cells.append(f"{entry['mean']:.4f}+-{entry['std']:.4f}".rjust(widths[metric]))
         lines.append(" ".join(cells))
+    return "\n".join(lines)
+
+
+def _train_placement(
+    series: np.ndarray,
+    placement: str,
+    *,
+    steps: int,
+    window: int,
+    stride: int,
+    batch_size: int,
+    d_model: int,
+    num_slices: int,
+    lam: float,
+    seed: int,
+    device: torch.device,
+):
+    """Train one placement on the series and return the frozen encoder, scaler, and splits."""
+    set_seed(seed)
+    loaders, scaler, splits = build_dataloaders(
+        series,
+        window=window,
+        stride=stride,
+        batch_size=batch_size,
+        augment=TwoViewAugmentation(jitter_sigma=0.1, scaling_sigma=0.1, mask_ratio=0.1),
+        seed=seed,
+    )
+    encoder = PatchTSTEncoder(
+        num_channels=series.shape[1], patch_len=16, stride=8, d_model=d_model, depth=2, n_heads=4
+    )
+    train(
+        encoder,
+        make_sigreg(placement, num_slices=num_slices),
+        loaders["train"],
+        steps=steps,
+        lam=lam,
+        device=device,
+        seed=seed,
+    )
+    return encoder.to(device).eval(), scaler, splits
+
+
+def _anomaly_auroc_one_seed(
+    series: np.ndarray,
+    *,
+    placements: tuple[str, ...],
+    kinds: tuple[str, ...],
+    steps: int,
+    window: int,
+    stride: int,
+    batch_size: int,
+    d_model: int,
+    num_slices: int,
+    lam: float,
+    seed: int,
+    strength: float,
+    device: torch.device,
+) -> dict[str, dict[str, float]]:
+    rng = np.random.default_rng(seed)
+    result: dict[str, dict[str, float]] = {}
+    for placement in placements:
+        encoder, scaler, splits = _train_placement(
+            series,
+            placement,
+            steps=steps,
+            window=window,
+            stride=stride,
+            batch_size=batch_size,
+            d_model=d_model,
+            num_slices=num_slices,
+            lam=lam,
+            seed=seed,
+            device=device,
+        )
+        normalized = scaler.transform(series)
+        train_windows, _ = sliding_windows(normalized, *splits["train"], window, stride)
+        test_windows, _ = sliding_windows(normalized, *splits["test"], window, stride)
+
+        # Mahalanobis on flattened token features so temporal structure is available.
+        scorer = MahalanobisScorer().fit(
+            extract_features(encoder, torch.from_numpy(train_windows), device, pool=False)
+        )
+        normal_scores = scorer.score(
+            extract_features(encoder, torch.from_numpy(test_windows), device, pool=False)
+        )
+
+        result[placement] = {}
+        for kind in kinds:
+            anomalous = inject_anomaly(test_windows, kind, rng, strength)
+            anomalous_scores = scorer.score(
+                extract_features(encoder, torch.from_numpy(anomalous), device, pool=False)
+            )
+            labels = np.concatenate([np.zeros(len(normal_scores)), np.ones(len(anomalous_scores))])
+            scores = np.concatenate([normal_scores, anomalous_scores])
+            result[placement][kind] = float(roc_auc_score(labels, scores))
+    return result
+
+
+def run_anomaly_comparison(
+    series: np.ndarray,
+    *,
+    seeds: tuple[int, ...] = (0, 1, 2),
+    placements: tuple[str, ...] = ("pooled", "dual"),
+    kinds: tuple[str, ...] = ("spike", "shuffle", "block_shuffle"),
+    steps: int = 500,
+    window: int = 96,
+    stride: int = 8,
+    batch_size: int = 32,
+    d_model: int = 32,
+    num_slices: int = 32,
+    lam: float = 0.5,
+    strength: float = 4.0,
+    device: torch.device | None = None,
+    results_path: str | Path | None = None,
+) -> dict[str, dict[str, dict[str, float]]]:
+    """Compare placements on anomaly detection AUROC, aggregated over seeds.
+
+    For each placement a frozen encoder is trained, a Mahalanobis scorer is fit on train
+    token features, and AUROC is measured separating real test windows from windows with each
+    injected anomaly. Returns ``{placement: {kind: {mean, std, values}}}``.
+    """
+    device = device or get_device()
+    per_seed = [
+        _anomaly_auroc_one_seed(
+            series,
+            placements=placements,
+            kinds=kinds,
+            steps=steps,
+            window=window,
+            stride=stride,
+            batch_size=batch_size,
+            d_model=d_model,
+            num_slices=num_slices,
+            lam=lam,
+            seed=seed,
+            strength=strength,
+            device=device,
+        )
+        for seed in seeds
+    ]
+
+    aggregate: dict[str, dict[str, dict[str, float]]] = {}
+    for placement in placements:
+        aggregate[placement] = {}
+        for kind in kinds:
+            values = [run[placement][kind] for run in per_seed]
+            aggregate[placement][kind] = {
+                "mean": float(np.mean(values)),
+                "std": float(np.std(values)),
+                "values": [float(v) for v in values],
+            }
+
+    if results_path is not None:
+        path = Path(results_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(aggregate, indent=2))
+    return aggregate
+
+
+def format_anomaly_table(aggregate: dict[str, dict[str, dict[str, float]]]) -> str:
+    """Render the anomaly comparison as placement vs anomaly-kind AUROC, mean plus or minus std."""
+    kinds = list(next(iter(aggregate.values())))
+    header = f"{'placement':<12}" + "".join(f"{kind + ' AUROC':>22}" for kind in kinds)
+    lines = [header, "-" * len(header)]
+    for placement, per_kind in aggregate.items():
+        cells = [f"{placement:<12}"]
+        for kind in kinds:
+            entry = per_kind[kind]
+            cells.append(f"{entry['mean']:.4f}+-{entry['std']:.4f}".rjust(22))
+        lines.append("".join(cells))
     return "\n".join(lines)

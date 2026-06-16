@@ -41,9 +41,12 @@ surprise is downstream: preventing the collapse does not help this task. Even wi
 sensitive probe (predict the full horizon trajectory from the token sequence), pooled forecasts
 reliably better than dual (MAE 0.440 against 0.457), and the gap sits outside the seed noise.
 Short-horizon traffic forecasting is close to persistence, so the level that a collapsed
-representation retains is most of what the task needs. Collapse and forecasting quality are
-decoupled here. See [RESULTS.md](RESULTS.md) for the full tables, the refuted hypothesis, and
-the next experiments worth running.
+representation retains is most of what the task needs. A second downstream test, Mahalanobis
+anomaly detection on token features, points the same way: both placements detect injected
+anomalies near-perfectly, so preventing the collapse gives no measurable benefit there either.
+Across both tests on PEMS08 the time-axis collapse is real and large but downstream-benign. See
+[RESULTS.md](RESULTS.md) for the full tables, the refuted hypotheses, and the next experiments
+worth running.
 
 ## Tech stack
 

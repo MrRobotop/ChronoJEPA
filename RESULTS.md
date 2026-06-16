@@ -78,16 +78,46 @@ On synthetic data dual both prevents the collapse and gives a lower forecasting 
 collapse result matches PEMS08; the downstream result does not, which is part of why the real
 benchmark matters.
 
+## PEMS08 anomaly detection (Mahalanobis on token features)
+
+To test whether the temporal structure dual preserves helps a task that should need it, we fit
+a Mahalanobis scorer on the flattened token features of normal training windows, then measure
+AUROC separating real test windows from windows with injected anomalies. Three anomaly types:
+`spike` (transient amplitude bumps), `shuffle` (full time permutation, which also reshuffles
+content across patches), and `block_shuffle` (permute contiguous blocks, preserving each block's
+content, so only the order changes). Three seeds, 500 steps, d_model 32. Reproduce with:
+
+```bash
+uv run python scripts/anomaly.py --pems data/pems08.npz --seeds 3 --steps 500 --strength 1.5
+```
+
+| placement | spike AUROC | shuffle AUROC | block_shuffle AUROC |
+|-----------|-------------|---------------|---------------------|
+| pooled    | 1.000 +- 0.000 | 1.000 +- 0.000 | 0.9981 +- 0.0016 |
+| dual      | 1.000 +- 0.000 | 1.000 +- 0.000 | 0.9994 +- 0.0006 |
+
+What it shows. Both placements detect every anomaly type near-perfectly, so the collapse does
+not impair Mahalanobis anomaly detection here. The detector on high-dimensional token features
+is sensitive enough that even a collapsed encoder, whose tokens are constant across time, still
+responds to the changed patch contents and flags the anomaly. The one place the prediction shows
+through is the order-only `block_shuffle`: it is the single anomaly where pooled drops below 1.0
+while dual stays closer to it (0.9981 against 0.9994), a faint signal in the predicted direction.
+But both are at ceiling, so this is not a meaningful downstream advantage. We did not keep
+redesigning anomalies until one favored dual; this is reported as measured.
+
 ## Conclusion and next steps
 
 The mechanistic claim holds: the dual placement prevents the time-axis collapse, robustly and by
-a large margin, on real data. The utility claim does not hold on PEMS08 short-horizon
-forecasting: preventing the collapse does not improve, and slightly worsens, this task, even
-under a temporally sensitive probe and across seeds. This is a genuine, non-confirmatory result
-worth reporting to LeJEPA issue #27.
+a large margin, on real data. The utility claim does not hold on PEMS08. Across two honest
+downstream tests, forecasting (single and full-trajectory, multi-seed) and Mahalanobis anomaly
+detection, preventing the collapse gives no measurable benefit: forecasting slightly favors
+pooled, and anomaly detection saturates for both. The accumulating picture on this benchmark is
+that the time-axis collapse, though real and large, is downstream-benign here, because the
+collapsed representation still carries the content and level these tasks rely on. This is a
+genuine, non-confirmatory result worth reporting to LeJEPA issue #27.
 
-The open question is whether any downstream task rewards the temporal structure dual preserves.
-Forecasting that is near-persistence is the wrong place to look. More promising tests: long
-horizons where persistence breaks down, sequence or regime classification, and anomaly detection
-through the Mahalanobis scorer, where a richer, non-collapsed representation should matter more.
-A lambda sweep and longer training are also untested levers.
+What remains open is whether any task genuinely depends on the temporal structure dual preserves.
+Forecasting near persistence and a saturating anomaly detector are both insensitive to it. More
+discriminating tests would be limited-label sequence or regime classification, long-horizon
+forecasting where persistence breaks down, or a weaker anomaly detector that is not already at
+ceiling. A lambda sweep and longer training are also untested levers.
