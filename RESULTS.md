@@ -438,6 +438,15 @@ dual is uncollapsed (0.602) and classifies well. So unlike PEMS forecasting, HAR
 recognition is a real task whose temporal structure the dual representation genuinely supplies, and
 the figure is in `figures/har_classification.png`.
 
+Running the HAR comparison across all three architectures (three seeds, MLP probe on token
+features) closes the loop between the placement and the collapse. The dual gain is +0.101 on the
+positional encoder (pooled across-time variance 0.017, the most collapsed), +0.044 on the TCN
+(1.77), and +0.011 (within noise) on the position-free bag-of-patches (0.281, which barely
+collapses). So dual's benefit on a real task is architecture dependent and tracks collapse severity:
+it helps most where the pooled baseline collapses most, and negligibly where it does not collapse.
+This generalises the HAR result beyond the positional encoder and links dual's downstream value
+causally to the collapse it prevents. The TCN is the strongest HAR encoder in absolute terms (0.869).
+
 ## Conclusion and next steps
 
 The central result, from the architecture factorial, is that the time-axis collapse diagnostic

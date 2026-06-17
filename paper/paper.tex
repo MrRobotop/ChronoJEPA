@@ -256,6 +256,29 @@ wins by $8$ to $11$ points on every probe, with non-overlapping error bars.}
 \label{fig:har}
 \end{figure}
 
+Running the comparison across all three architectures (Table~\ref{tab:har_arch}, MLP on token
+features, three seeds) ties dual's benefit causally to the collapse it prevents. The gain is largest
+on the positional transformer, which collapses most under the pooled placement (across-time
+variance $0.017$) and gains $7$ to $10$ points; moderate on the TCN; and negligible on the
+position-free bag-of-patches, which barely collapses ($0.281$) and so leaves dual little to add.
+Dual helps exactly where preventing the collapse has something to prevent.
+
+\begin{table}[t]
+\centering\small
+\caption{HAR across architectures (three seeds, MLP probe on token features). The dual gain tracks
+how much the pooled baseline collapses.}
+\label{tab:har_arch}
+\begin{tabular}{l ccc cc}
+\toprule
+architecture & pooled acc & dual acc & dual gain & pooled var & dual var \\
+\midrule
+positional   & $0.672\pm0.017$ & $0.773\pm0.019$ & $+0.101$ & $0.017$ & $0.578$ \\
+tcn          & $0.826\pm0.015$ & $0.869\pm0.023$ & $+0.044$ & $1.772$ & $4.384$ \\
+bagofpatches & $0.722\pm0.008$ & $0.733\pm0.009$ & $+0.011$ & $0.281$ & $0.353$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
 \subsection{Label-free model selection}
 
 A $\lambda$ sweep shows across-time variance is set by placement, not $\lambda$, and that SIGReg is

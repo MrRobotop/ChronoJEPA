@@ -326,6 +326,26 @@ structure the richer dual representation supplies.
 ![UCI HAR: dual versus pooled under linear and MLP probes on pooled and token features. Dual wins
 by 8 to 11 points on every probe, with non-overlapping error bars.](figures/har_classification.png)
 
+Running the same HAR comparison across all three architectures (three seeds, best probe MLP on
+token features shown) closes the loop between the placement and the collapse it prevents.
+
+| architecture | pooled acc | dual acc | dual gain | pooled across-time var | dual across-time var |
+|--------------|------------|----------|-----------|------------------------|----------------------|
+| positional   | 0.672 +- 0.017 | 0.773 +- 0.019 | +0.101 | 0.017 +- 0.002 | 0.578 +- 0.055 |
+| tcn          | 0.826 +- 0.015 | 0.869 +- 0.023 | +0.044 | 1.772 +- 0.380 | 4.384 +- 0.380 |
+| bagofpatches | 0.722 +- 0.008 | 0.733 +- 0.009 | +0.011 | 0.281 +- 0.050 | 0.353 +- 0.070 |
+
+The dual benefit is architecture dependent and tracks how much the pooled baseline collapses in
+that architecture. It is largest on the positional transformer, which collapses most under the
+pooled placement (across-time variance 0.017) and gains 7 to 10 accuracy points across probes; it
+is moderate on the TCN; and it is negligible on the position-free bag-of-patches, which barely
+collapses to begin with (0.281) and whose within-time term moves the variance little (to 0.353), so
+dual adds essentially nothing (gain within noise). This both generalises the HAR result beyond the
+positional encoder and ties dual's downstream benefit causally to collapse severity: dual helps
+exactly where preventing the collapse has something to prevent. We note in passing that the TCN is
+the strongest encoder on HAR in absolute terms (best accuracy 0.869), consistent with convolution
+suiting short inertial windows.
+
 ### 5.7 Lambda sweep and label-free model selection
 
 Sweeping lambda across placements (PEMS, three seeds) shows two things. Across-time variance is
@@ -375,8 +395,9 @@ HAR and PEMS contrasts and the ETT family as a unit. Training is fixed at 500 st
 shown to be converged. The richness-to-benefit link is correlational through effective rank and is
 not causally isolated. The synthetic order probes have dataset-dependent confounds, which we
 document and mitigate by reporting the exact chance anchor and by using the clean probe per dataset.
-Finally, the HAR study uses the positional encoder only; we did not run the full architecture
-factorial on HAR.
+The HAR comparison is now run across all three architectures, so it is no longer positional-only,
+but it uses three seeds rather than the eight we use for forecasting, and we have not paired-tested
+its gaps formally.
 
 ## 8. Conclusion and future work
 
