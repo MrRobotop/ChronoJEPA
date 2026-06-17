@@ -35,11 +35,13 @@ class PatchTSTEncoder(nn.Module):
         depth: int = 3,
         n_heads: int = 4,
         dropout: float = 0.0,
+        pos_encoding: bool = True,
     ) -> None:
         super().__init__()
         self.patch_len = patch_len
         self.stride = stride
         self.d_model = d_model
+        self.pos_encoding = pos_encoding
         self.patch_embed = nn.Linear(patch_len, d_model)
         layer = nn.TransformerEncoderLayer(
             d_model=d_model,
@@ -55,7 +57,8 @@ class PatchTSTEncoder(nn.Module):
         patches = x.unfold(dimension=2, size=self.patch_len, step=self.stride)
         num_patches = patches.shape[2]
         tokens = self.patch_embed(patches)  # (B, C, num_patches, d_model)
-        tokens = tokens + _sinusoidal_encoding(num_patches, self.d_model, x.device, x.dtype)
+        if self.pos_encoding:
+            tokens = tokens + _sinusoidal_encoding(num_patches, self.d_model, x.device, x.dtype)
         tokens = tokens.reshape(batch * channels, num_patches, self.d_model)
         tokens = self.transformer(tokens)
         tokens = tokens.reshape(batch, channels, num_patches, self.d_model)

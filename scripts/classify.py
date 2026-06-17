@@ -41,6 +41,11 @@ def main(argv: list[str] | None = None) -> dict:
         action="store_true",
         help="probe pooled (time-mean) features, simulating a fully collapsed representation",
     )
+    parser.add_argument(
+        "--no-pos-encoding",
+        action="store_true",
+        help="ablate the encoder positional encoding (transformer becomes permutation-equivariant)",
+    )
     parser.add_argument("--out", default="results/classification.json")
     args = parser.parse_args(argv)
 
@@ -50,6 +55,7 @@ def main(argv: list[str] | None = None) -> dict:
         seeds=tuple(range(args.seeds)),
         steps=args.steps,
         pool=args.pool,
+        pos_encoding=not args.no_pos_encoding,
         results_path=args.out,
     )
     print(format_classification_table(aggregate))

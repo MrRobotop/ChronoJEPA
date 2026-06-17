@@ -235,6 +235,29 @@ mainly that pooled keeps a residual 6 percent of variance, it is that the order-
 information lives in the token values, which a positional transformer computes order-sensitively
 whether or not the tokens vary across time.
 
+To confirm that positional encoding is the carrier, we ablated it (the transformer over patches
+is then permutation-equivariant) and reran the pooled-feature probe. Reproduce with:
+
+```bash
+uv run python scripts/classify.py --pems data/pems08.npz --seeds 3 --pool --no-pos-encoding
+```
+
+| pooled-feature condition | trend            | level            | halfswap         |
+|--------------------------|------------------|------------------|------------------|
+| with positional encoding | 0.9571           | 0.9931           | 0.9805           |
+| without (ablation)       | 0.9218 / 0.9379  | 0.9900 / 0.9939  | 0.9337 / 0.8908  |
+
+Removing positional encoding drops halfswap on the pooled feature from about 0.98 to about 0.90,
+which confirms positional encoding supplies much of the order signal in the time-mean. It does not
+fall to chance, for a concrete reason: the half-swap is `np.roll` by 48 over overlapping
+stride-8 patches, which is not a clean patch permutation, so the wrap-around boundary leaves real
+content differences that a linear probe still reads. The exact mechanism is nailed by the unit
+tests instead: with non-overlapping, patch-aligned permutations, the encoder without positional
+encoding is permutation-equivariant (so a mean over patches is permutation-invariant), and with
+positional encoding it is not. So positional encoding is the order carrier in the clean setting,
+and on the messy real-data swap it accounts for about half the gap to chance, the rest being
+windowing content leakage.
+
 ## Conclusion and next steps
 
 The mechanistic claim holds: the dual placement prevents the time-axis collapse, robustly and by
@@ -277,11 +300,19 @@ dual edges ahead only on the one subtle order task. The SIGReg pressure that pre
 also trades slightly against the linear forecaster, and SIGReg loss is not a reliable label-free
 selector here.
 
+A positional-encoding ablation confirms this. Unit tests show the encoder without positional
+encoding is exactly permutation-equivariant over patches, and removing it on PEMS drops the
+pooled-feature halfswap accuracy from about 0.98 toward 0.90 (not all the way to chance, because
+overlapping non-aligned patching leaks content at the swap boundary). So positional encoding is
+the order carrier, and the across-time collapse is downstream-benign here precisely because that
+order information lives in the token values rather than in how the tokens vary across time.
+
 The honest takeaway for LeJEPA issue #27 is two-sided. The time-axis collapse is genuine and the
 dual placement is a clean fix for it, but on time series encoded by a positional transformer the
 across-time variance collapse is not by itself a downstream problem, because that architecture
 retains order information independently of it. The collapse diagnostic is most likely to matter
 for encoders without strong positional structure, or for tasks where order information must survive
-in the geometry of the embedding rather than in token values. Testing the collapse with a
-permutation-invariant or position-free encoder, where mean-pooling really would erase order, is the
-natural next experiment, alongside longer training and a non-saturating anomaly detector.
+in the geometry of the embedding rather than in token values. The cleanest remaining test is a
+genuinely position-free encoder (non-overlapping patches, no positional encoding, no cross-patch
+attention) where mean-pooling really would erase order and the collapse should finally bite;
+longer training and a non-saturating anomaly detector are the other untested levers.

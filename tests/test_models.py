@@ -36,6 +36,38 @@ def test_tcn_output_contract() -> None:
     assert torch.isfinite(tokens).all() and torch.isfinite(pooled).all()
 
 
+def _permute_patches(x: torch.Tensor, perm: list[int], patch: int) -> torch.Tensor:
+    num = x.shape[2] // patch
+    return x.reshape(x.shape[0], x.shape[1], num, patch)[:, :, perm, :].reshape(x.shape)
+
+
+def test_patchtst_without_pos_encoding_is_patch_permutation_equivariant() -> None:
+    torch.manual_seed(0)
+    encoder = PatchTSTEncoder(
+        num_channels=1, patch_len=8, stride=8, d_model=16, depth=2, n_heads=4, pos_encoding=False
+    ).eval()
+    x = torch.randn(1, 1, 32)
+    perm = [3, 1, 2, 0]
+    with torch.no_grad():
+        tokens, _ = encoder(x)
+        permuted, _ = encoder(_permute_patches(x, perm, patch=8))
+    # No positional encoding: permuting input patches permutes the output tokens identically.
+    assert torch.allclose(tokens[:, perm, :], permuted, atol=1e-5)
+
+
+def test_patchtst_with_pos_encoding_breaks_permutation_equivariance() -> None:
+    torch.manual_seed(0)
+    encoder = PatchTSTEncoder(
+        num_channels=1, patch_len=8, stride=8, d_model=16, depth=2, n_heads=4, pos_encoding=True
+    ).eval()
+    x = torch.randn(1, 1, 32)
+    perm = [3, 1, 2, 0]
+    with torch.no_grad():
+        tokens, _ = encoder(x)
+        permuted, _ = encoder(_permute_patches(x, perm, patch=8))
+    assert not torch.allclose(tokens[:, perm, :], permuted, atol=1e-5)
+
+
 def test_pooled_is_mean_over_time_tokens() -> None:
     tokens, pooled = _tcn()(torch.randn(B, C, T))
     assert torch.allclose(pooled, tokens.mean(dim=1), atol=1e-5)

@@ -230,6 +230,7 @@ def _train_placement(
     lam: float,
     seed: int,
     device: torch.device,
+    pos_encoding: bool = True,
 ):
     """Train one placement and return the frozen encoder, scaler, splits, and training logger."""
     set_seed(seed)
@@ -242,7 +243,13 @@ def _train_placement(
         seed=seed,
     )
     encoder = PatchTSTEncoder(
-        num_channels=series.shape[1], patch_len=16, stride=8, d_model=d_model, depth=2, n_heads=4
+        num_channels=series.shape[1],
+        patch_len=16,
+        stride=8,
+        d_model=d_model,
+        depth=2,
+        n_heads=4,
+        pos_encoding=pos_encoding,
     )
     logger = train(
         encoder,
@@ -679,6 +686,7 @@ def run_classification_comparison(
     num_slices: int = 32,
     lam: float = 0.5,
     pool: bool = False,
+    pos_encoding: bool = True,
     device: torch.device | None = None,
     results_path: str | Path | None = None,
 ) -> dict[str, dict[str, dict[str, float]]]:
@@ -706,6 +714,7 @@ def run_classification_comparison(
                 lam=lam,
                 seed=seed,
                 device=device,
+                pos_encoding=pos_encoding,
             )
             normalized = scaler.transform(series)
             train_windows, _ = sliding_windows(normalized, *splits["train"], window, stride)
