@@ -210,14 +210,30 @@ pooled's mean plus one standard deviation). This is the one downstream task wher
 pooled, and it is exactly the temporal-order task dual's within-sequence term should suit.
 
 The halfswap task was meant to be the decisive test: with content matched exactly, a
-position-blind representation should sit near chance and only a position-aware one should
-classify it. Instead both placements are at ceiling, pooled at 1.000 and dual at 0.9996. The
-lesson is that the collapse on PEMS is only partial: pooled's across-time variance is about 0.06,
-not zero, and a gross half-swap of 48 steps is such a large systematic change that even that
-residual 6 percent of temporal signal lets a linear probe separate the two classes perfectly. So
-pooled is never actually position-blind here, which is why dual's advantage appears only on the
-subtle trend task and stays small. The decisive separation would need a setting where pooled
-collapses fully (across-time variance near zero), which does not occur naturally on this data.
+position-blind representation should sit near chance and only a position-aware one should classify
+it. Instead both placements are at ceiling, pooled at 1.000 and dual at 0.9996.
+
+To probe why, we reran classification on the pooled (time-mean) feature instead of the token
+sequence, which simulates a fully collapsed representation. The prediction was that the time-mean
+is permutation-invariant, so halfswap should drop to exactly 0.5.
+
+| feature                       | trend            | level            | halfswap         |
+|-------------------------------|------------------|------------------|------------------|
+| token (pooled placement)      | 0.9747           | 0.9946           | 1.0000           |
+| token (dual placement)        | 0.9793           | 0.9946           | 0.9996           |
+| pooled mean (pooled placement)| 0.9571           | 0.9931           | 0.9805           |
+| pooled mean (dual placement)  | 0.9663           | 0.9931           | 0.9759           |
+
+The prediction was wrong, and the way it was wrong is the deepest result here. Averaging the
+tokens over time barely dents any task: halfswap stays at about 0.98, not 0.5. The reason is
+architectural. The time-mean of PatchTST tokens is not permutation-invariant, because positional
+encoding and self-attention inject order into the token values before any pooling, so the averaged
+feature still carries order information. So low across-time variance, which is what the collapse
+diagnostic measures, does not mean the representation has lost temporal or order information. The
+two are different properties. This refines the earlier partial-collapse explanation: it is not
+mainly that pooled keeps a residual 6 percent of variance, it is that the order-relevant
+information lives in the token values, which a positional transformer computes order-sensitively
+whether or not the tokens vary across time.
 
 ## Conclusion and next steps
 
@@ -241,33 +257,31 @@ scales. The overall picture on this benchmark: the time-axis collapse is real an
 downstream-benign, the dual placement that fixes it trades slightly against forecasting, and
 SIGReg loss is not a reliable label-free selector for this task.
 
-The classification experiment supplied the first positive evidence for dual and then explained
-why it stays small. On the subtle trend task dual beats pooled consistently across seeds, while
-the two tie on the level control. But on halfswap, a content-matched pure-position task built to
-be decisive, both placements are at ceiling. That pins down the real limiting factor: the
-collapse on PEMS is partial, not total. Pooled's across-time variance is about 0.06 rather than
-zero, which is small relative to dual's 0.6 but still enough temporal signal for a linear probe
-to handle gross position tasks perfectly. So pooled is never actually position-blind, and dual's
-edge survives only on the subtle trend task.
+The classification experiment supplied the first positive evidence for dual, on the subtle trend
+task, and then a controlled follow-up reframed the whole study. The plan was that the content
+matched halfswap task would be decisive, and that probing the pooled time-mean feature would
+simulate full collapse and drop halfswap to chance. Neither happened: both placements classify
+halfswap at ceiling, and the time-mean feature still reaches about 0.98. The reason is
+architectural. The time-mean of PatchTST tokens is not permutation-invariant, because positional
+encoding and attention write order into the token values before pooling. So the diagnostic the
+project is built around, low across-time variance, does not entail loss of temporal or order
+information: a representation can collapse along time and still carry the order the task needs.
 
-So the full picture across six tests is coherent. The time-axis collapse is real and large in
-relative terms, the dual placement robustly fixes it, but on PEMS the collapse is partial, so the
-collapsed representation keeps enough level and residual position signal to match pooled on
-forecasting (at any horizon), anomaly detection, level classification, and even a gross
-position swap. Dual's advantage appears only on the one subtle order-dependent task, and the
-SIGReg regularization that prevents collapse trades slightly against the linear forecaster. A
-reasonable conclusion for LeJEPA issue #27 is that on PEMS-style data the time-axis collapse is
-partial and downstream-benign, so it should be diagnosed and fixed only when the task both depends
-on per-timestep order and is subtle enough that the residual signal in a collapsed representation
-is insufficient; for level-driven forecasting it does not need fixing, and SIGReg loss is not a
-reliable label-free selector there.
+That is the central finding, and it is sharper than the earlier partial-collapse story. Across six
+tests the time-axis collapse is real and large in the across-time variance sense, the dual
+placement robustly produces it, but it is downstream-benign on PEMS because the order-relevant
+information lives in the token values, which a positional transformer computes order-sensitively
+whether or not the tokens vary across time. Pooled therefore matches dual on forecasting at any
+horizon, on anomaly detection, on level classification, and even on a gross position swap, and
+dual edges ahead only on the one subtle order task. The SIGReg pressure that prevents the collapse
+also trades slightly against the linear forecaster, and SIGReg loss is not a reliable label-free
+selector here.
 
-A clean decisive test would require a setting where pooled collapses fully (across-time variance
-near zero). That did not occur naturally on PEMS within these training budgets, so whether a fully
-collapsed representation would fail an order task as sharply as the mechanism predicts is the
-remaining open question, alongside longer training and a non-saturating anomaly detector.
-
-What remains open: the trend effect is small, so larger and more clearly order-dependent tasks
-(regime or phase classification, long-horizon forecasting past persistence) would test whether the
-dual advantage grows when the task leans harder on temporal structure, and longer training and a
-non-saturating anomaly detector are untested levers.
+The honest takeaway for LeJEPA issue #27 is two-sided. The time-axis collapse is genuine and the
+dual placement is a clean fix for it, but on time series encoded by a positional transformer the
+across-time variance collapse is not by itself a downstream problem, because that architecture
+retains order information independently of it. The collapse diagnostic is most likely to matter
+for encoders without strong positional structure, or for tasks where order information must survive
+in the geometry of the embedding rather than in token values. Testing the collapse with a
+permutation-invariant or position-free encoder, where mean-pooling really would erase order, is the
+natural next experiment, alongside longer training and a non-saturating anomaly detector.

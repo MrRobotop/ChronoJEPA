@@ -51,16 +51,18 @@ not track downstream quality, so LeJEPA's label-free selection claim does not tr
 task. A fifth test finally finds where dual wins: on a temporal-order classification task (is the
 window rising or falling) dual beats pooled, consistently across seeds, while both tie on a level
 control. The margin is small but in the predicted direction. A content-matched pure-position task
-(window vs the same window with halves swapped), built to be decisive, then saturated for both at
-once, which pinned down why every effect is small: the collapse on PEMS is partial (pooled's
-across-time variance is about 0.06, not zero), so pooled keeps enough residual signal to match
-dual on all but the subtlest order task. So the picture across six tests is task-type dependent:
-the collapse is real and large in relative terms but partial and downstream-benign, fixing it does
-not help level-driven forecasting and is mildly costly there, and helps only a subtle
-order-dependent task. The practical takeaway is to fix the collapse only when the task depends on
-per-timestep order and is subtle enough that a partially collapsed representation cannot cope. See
-[RESULTS.md](RESULTS.md) for the full tables, the refuted hypotheses, and the experiments behind
-this.
+(window vs the same window with halves swapped), built to be decisive, then led to the central
+finding. It saturated for both placements, and a controlled follow-up, probing the time-mean
+feature to simulate full collapse, still classified it at about 0.98 rather than the predicted
+chance. The reason is architectural: the time-mean of PatchTST tokens is not permutation
+invariant, because positional encoding and attention write order into the token values before any
+pooling. So low across-time variance, which is what the collapse diagnostic measures, does not
+entail loss of order information. That is why the collapse is downstream-benign on PEMS: the
+order-relevant information lives in the token values, which a positional transformer computes
+order-sensitively whether or not the tokens vary across time. The collapse is real and the dual
+placement is a clean fix, but on a positional transformer it is not by itself a downstream
+problem. See [RESULTS.md](RESULTS.md) for the full tables, the refuted hypotheses, and the
+experiments behind this.
 
 ## Tech stack
 

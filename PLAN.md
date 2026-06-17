@@ -71,10 +71,12 @@ These are the milestones the experiments must compare:
   and shows label-free selection by SIGReg loss does not transfer here. A temporal-order
   classification task (trend) is the first place dual beats pooled (0.979 vs 0.975, consistent
   across seeds), while both tie on a level control and on a content-matched halfswap task (both at
-  ceiling). The halfswap saturation pins the limiting factor: the collapse on PEMS is partial
-  (pooled across-time variance about 0.06, not zero), so pooled keeps enough residual signal to
-  match dual on all but the subtlest order task. Picture across six tests is task-type dependent
-  and the collapse is downstream-benign on PEMS. See RESULTS.md.
+  ceiling). A controlled follow-up (probing the time-mean feature to simulate full collapse) still
+  classified halfswap at about 0.98, giving the central finding: the time-mean of PatchTST tokens
+  is not permutation-invariant because positional encoding and attention write order into the
+  token values, so low across-time variance does not entail loss of order information. The collapse
+  is real and dual fixes it, but on a positional transformer it is downstream-benign. See
+  RESULTS.md.
 - [x] **Phase 6: Label-free model selection.** `label_free_model_selection` ranks runs by
   final SIGReg loss and reports the Spearman correlation with the labeled downstream metric,
   the label-free pick versus the label-based pick, and whether they agree, with a thin CLI.

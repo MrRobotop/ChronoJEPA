@@ -36,6 +36,11 @@ def main(argv: list[str] | None = None) -> dict:
     parser.add_argument("--pems", help="path to a PEMS .npz; uses synthetic data if omitted")
     parser.add_argument("--steps", type=int, default=500)
     parser.add_argument("--seeds", type=int, default=3)
+    parser.add_argument(
+        "--pool",
+        action="store_true",
+        help="probe pooled (time-mean) features, simulating a fully collapsed representation",
+    )
     parser.add_argument("--out", default="results/classification.json")
     args = parser.parse_args(argv)
 
@@ -44,6 +49,7 @@ def main(argv: list[str] | None = None) -> dict:
         series,
         seeds=tuple(range(args.seeds)),
         steps=args.steps,
+        pool=args.pool,
         results_path=args.out,
     )
     print(format_classification_table(aggregate))
