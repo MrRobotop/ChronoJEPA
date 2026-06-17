@@ -33,7 +33,19 @@ the best downstream representations.
 
 ## Result so far
 
-On the real PEMS08 traffic benchmark, across five seeds, the dual placement robustly prevents
+The headline, from an architecture-by-placement factorial on PEMS08, is that the time-axis
+collapse diagnostic does not measure what we assumed. Across-time variance does not track whether
+a representation keeps temporal order, and in the factorial it is anticorrelated with it: the most
+collapsed configuration (a positional transformer, pooled placement) recovers a content-matched
+half-swap at 0.98, while the least collapsed one (a position-free bag-of-patches encoder, variance
+about 15x higher) is at chance, 0.50. What determines order recovery is positional encoding, not
+the collapse and not the placement. The dual placement that fixes the collapse therefore helps no
+downstream order task in either architecture: a positional encoder already has the order, and a
+position-free one cannot get it back by preventing the collapse. See `figures/halfswap.png` and
+the factorial table in [RESULTS.md](RESULTS.md).
+
+The investigation that led there, in detail. On the real PEMS08 traffic benchmark, across five
+seeds, the dual placement robustly prevents
 the time-axis collapse: it keeps about 9.5 times the across-time variance of the pooled baseline
 (0.607 against 0.064) and a clearly higher effective rank (11.5 against 8.1), with no overlap in
 the seed-to-seed bands. So the central mechanistic claim holds firmly on real data. The honest

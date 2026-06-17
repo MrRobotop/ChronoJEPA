@@ -72,11 +72,13 @@ These are the milestones the experiments must compare:
   classification task (trend) is the first place dual beats pooled (0.979 vs 0.975, consistent
   across seeds), while both tie on a level control and on a content-matched halfswap task (both at
   ceiling). A controlled follow-up (probing the time-mean feature to simulate full collapse) still
-  classified halfswap at about 0.98, giving the central finding: the time-mean of PatchTST tokens
-  is not permutation-invariant because positional encoding and attention write order into the
-  token values, so low across-time variance does not entail loss of order information. The collapse
-  is real and dual fixes it, but on a positional transformer it is downstream-benign. See
-  RESULTS.md.
+  classified halfswap at about 0.98. An architecture-by-placement factorial (positional PatchTST
+  vs a position-free bag-of-patches encoder) gives the central result: across-time variance does
+  not track order availability and is anticorrelated with it (most-collapsed positional|pooled
+  recovers a half-swap at 0.98, least-collapsed bagofpatches is at chance 0.50). Order is
+  determined by positional encoding, an axis orthogonal to the placement that controls the
+  collapse, so dual helps no order task in either architecture. The collapse diagnostic is not the
+  right lever for positional time-series encoders. See RESULTS.md and figures/.
 - [x] **Phase 6: Label-free model selection.** `label_free_model_selection` ranks runs by
   final SIGReg loss and reports the Spearman correlation with the labeled downstream metric,
   the label-free pick versus the label-based pick, and whether they agree, with a thin CLI.

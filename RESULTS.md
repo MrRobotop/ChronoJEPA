@@ -258,11 +258,83 @@ positional encoding it is not. So positional encoding is the order carrier in th
 and on the messy real-data swap it accounts for about half the gap to chance, the rest being
 windowing content leakage.
 
+## Architecture x placement factorial (the central result)
+
+A factorial study over encoder architecture (positional PatchTST vs a position-free
+bag-of-patches: non-overlapping patches, a shared per-patch MLP, no positional encoding and no
+cross-patch attention) crossed with placement, three seeds, measuring the collapse diagnostics
+and halfswap and trend accuracy from both the token and the pooled feature. Reproduce with:
+
+```bash
+uv run python scripts/architecture_study.py --pems data/pems08.npz --seeds 3
+uv run python scripts/plot_study.py results/pems_architecture_study.json --outdir figures
+```
+
+| arch \| placement      | across-time var | eff rank      | halfswap token | halfswap pooled | trend token   | trend pooled  |
+|------------------------|-----------------|---------------|----------------|-----------------|---------------|---------------|
+| positional \| pooled   | 0.113 +- 0.018  | 6.615 +- 0.14 | 1.000 +- 0.000 | 0.980 +- 0.012  | 0.975 +- 0.004| 0.957 +- 0.001|
+| positional \| dual     | 0.620 +- 0.006  | 8.485 +- 0.19 | 1.000 +- 0.001 | 0.976 +- 0.010  | 0.979 +- 0.000| 0.966 +- 0.002|
+| bagofpatches \| pooled | 1.712 +- 0.135  | 1.449 +- 0.05 | 0.499 +- 0.008 | 0.500 +- 0.000  | 0.992 +- 0.003| 0.887 +- 0.010|
+| bagofpatches \| dual   | 1.739 +- 0.091  | 1.605 +- 0.05 | 0.489 +- 0.007 | 0.500 +- 0.000  | 0.995 +- 0.001| 0.896 +- 0.002|
+
+Figures in `figures/`: collapse.png, halfswap.png, trend.png.
+
+This is the strongest finding of the project, and it overturns the assumption the project began
+with. Read the columns against each other.
+
+1. The collapse is set by architecture and placement together, not placement alone. On the
+   positional encoder the placement controls it (across-time variance 0.11 pooled against 0.62
+   dual). On the bag-of-patches encoder neither placement collapses: both sit near 1.7, because
+   each token is an independent embedding of its own patch and so varies by content regardless of
+   the objective.
+
+2. Across-time variance does not measure order information, and here it is anticorrelated with it.
+   The most collapsed configuration, positional pooled at variance 0.11, recovers a half-swap at
+   0.98. The least collapsed configuration, bag-of-patches at variance 1.7, is at chance, 0.50.
+   So the diagnostic the project is built around runs opposite to the thing it was meant to
+   protect: high across-time variance coincides with order being lost, low variance with order
+   being kept.
+
+3. Order availability is determined by positional encoding, not by placement or by the collapse.
+   The positional encoder recovers the half-swap at about 0.98 to 1.00 in every placement and from
+   either feature, while the bag-of-patches encoder is at chance, 0.500 plus or minus 0.000 from
+   the pooled feature, in every placement. The placement (pooled vs dual) moves the half-swap
+   result by nothing. The bag-of-patches pooled feature hitting exactly 0.500 with zero variance
+   is the clean proof: a genuinely position-free representation is exactly order-blind, and the
+   probe detects it.
+
+4. A prediction we made was refuted, usefully. We expected token features to retain order
+   everywhere, since order could live in position-in-vector. The bag-of-patches token feature is
+   also at chance on the half-swap. Without positional encoding the token values do not encode
+   absolute position, and the half-swap is a cyclic rotation of the same set of tokens, which a
+   linear probe cannot anchor. So even token-level order recovery needs positional encoding.
+
+5. Effective rank dissociates from across-time variance too: bag-of-patches has the highest
+   variance (1.7) and the lowest effective rank (about 1.5), because its per-patch embeddings vary
+   across time but lie on a low-dimensional content manifold. Two geometric diagnostics, two
+   different stories, neither tracking order.
+
+The trend column is consistent: trend is a per-patch level comparison, available in token features
+for both architectures (bag-of-patches is even cleanest at 0.99 because its tokens are undistorted
+per-patch content), and degraded in the pooled feature that averages the halves together.
+
 ## Conclusion and next steps
 
-The mechanistic claim holds: the dual placement prevents the time-axis collapse, robustly and by
-a large margin, on real data, and the lambda sweep shows the placement, not the lambda, controls
-it. The utility claim does not hold on PEMS08. Across four honest downstream tests, forecasting
+The central result, from the architecture factorial, is that the time-axis collapse diagnostic
+(across-time variance) does not measure what the project assumed it measured. It does not track
+downstream order availability, and across the factorial it is anticorrelated with it: the most
+collapsed configuration keeps order and the least collapsed one loses it. What actually determines
+whether order survives is positional encoding in the encoder, an axis orthogonal to the placement
+that controls the collapse. So the dual placement, which robustly prevents the collapse, does not
+help downstream order tasks in either architecture: with a positional transformer the order is
+already present whether or not the tokens collapse, and with a position-free encoder the order is
+absent and preventing the collapse does not bring it back. Preventing the time-axis collapse is
+not, on this evidence, the right lever for representation quality on positional time-series
+encoders.
+
+The supporting investigation is consistent with this. The dual placement prevents the time-axis
+collapse robustly and by a large margin on the positional encoder, and the lambda sweep shows the
+placement, not the lambda, controls it. The utility claim does not hold on PEMS08. Across four honest downstream tests, forecasting
 (mean and full-trajectory, multi-seed), forecasting swept over horizons 3 to 48, Mahalanobis
 anomaly detection, and a lambda sweep, preventing the collapse gives no measurable benefit and is
 mildly costly. We also ruled out our own leading explanation: the persistence hypothesis predicts
