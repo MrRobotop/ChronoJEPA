@@ -39,10 +39,16 @@ a representation keeps temporal order, and in the factorial it is anticorrelated
 collapsed configuration (a positional transformer, pooled placement) recovers a content-matched
 half-swap at 0.98, while the least collapsed one (a position-free bag-of-patches encoder, variance
 about 15x higher) is at chance, 0.50. What determines order recovery is positional encoding, not
-the collapse and not the placement. The dual placement that fixes the collapse therefore helps no
-downstream order task in either architecture: a positional encoder already has the order, and a
-position-free one cannot get it back by preventing the collapse. See `figures/halfswap.png` and
-the factorial table in [RESULTS.md](RESULTS.md).
+the collapse and not the placement. The dual placement that fixes the collapse does not recover
+order in either architecture: a positional encoder already has the order, and a position-free one
+cannot get it back by preventing the collapse. The factorial replicates on a second, very
+different dataset (ETT, electricity, 7 channels, hourly). What dual does change is representation
+richness (a higher effective rank), and whether that helps downstream is dataset dependent: it
+does not help PEMS short-horizon forecasting (near persistence) but it does help ETT twelve-step
+forecasting (about 4 percent lower MAE, 11 percent lower MSE), where the target is genuinely
+structured. So the two-axis picture is: preventing the collapse does not change order
+availability, but it enriches the representation and pays off when the task can use that. See
+`figures/halfswap.png` and the factorial and ETT tables in [RESULTS.md](RESULTS.md).
 
 The investigation that led there, in detail. On the real PEMS08 traffic benchmark, across five
 seeds, the dual placement robustly prevents

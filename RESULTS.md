@@ -318,6 +318,73 @@ The trend column is consistent: trend is a per-patch level comparison, available
 for both architectures (bag-of-patches is even cleanest at 0.99 because its tokens are undistorted
 per-patch content), and degraded in the pooled feature that averages the halves together.
 
+## External validity: the factorial on ETT
+
+To check that the factorial result is not a quirk of 170-channel traffic data, we reran the same
+study on ETTh1 (electricity transformer temperature: 7 channels, hourly, about 17000 steps), a
+very different regime. Reproduce with:
+
+```bash
+uv run python scripts/architecture_study.py --ett data/ETTh1.csv --seeds 3
+uv run python scripts/plot_study.py results/ett_architecture_study.json --outdir figures/ett
+```
+
+| arch \| placement      | across-time var | eff rank       | halfswap token | halfswap pooled | trend token   | trend pooled  |
+|------------------------|-----------------|----------------|----------------|-----------------|---------------|---------------|
+| positional \| pooled   | 0.045 +- 0.010  | 6.71 +- 1.28   | 0.561 +- 0.011 | 0.523 +- 0.014  | 0.877 +- 0.004| 0.700 +- 0.062|
+| positional \| dual     | 0.554 +- 0.029  | 12.12 +- 0.57  | 0.608 +- 0.010 | 0.542 +- 0.023  | 0.895 +- 0.014| 0.756 +- 0.013|
+| bagofpatches \| pooled | 0.525 +- 0.040  | 1.722 +- 0.059 | 0.484 +- 0.002 | 0.500 +- 0.000  | 0.973 +- 0.006| 0.546 +- 0.001|
+| bagofpatches \| dual   | 0.878 +- 0.005  | 2.145 +- 0.057 | 0.513 +- 0.007 | 0.500 +- 0.000  | 0.967 +- 0.008| 0.538 +- 0.015|
+
+Figures in `figures/ett/`. The central thesis replicates, with one probe carrying the signal
+cleanly and a methodological subtlety exposed in the other.
+
+The clean cross-dataset evidence on ETT is the trend task probed from the pooled feature. The
+positional encoder retains the order needed for trend in its pooled feature (0.70 to 0.76, well
+above chance), while the position-free bag-of-patches encoder does not (0.546 and 0.538, at
+chance), because its pooled feature is permutation-invariant and trend asks which half is higher.
+This is the same conclusion as PEMS: positional encoding, not the absence of collapse, is what
+lets a pooled or collapsed representation keep order. The across-time-variance anticorrelation
+also replicates: the most collapsed configuration, positional pooled at variance 0.045, keeps the
+trend order at 0.70, while the higher-variance bag-of-patches loses it at 0.546. And the effective
+rank dissociation replicates: bag-of-patches has low rank (about 1.7 to 2.1) regardless of its
+variance.
+
+The methodological subtlety is that the two order probes have dataset-dependent confounds, and
+they trade places between the datasets. On ETT the halfswap probe is muted: ETT is hourly with
+strong daily periodicity, and the half-swap rolls a 96-hour window by 48 hours, almost exactly two
+daily periods, so the swapped window is nearly identical to the original and even the positional
+encoder sits near chance (0.52 to 0.61). On PEMS the halfswap was clean (roll by four hours is not
+a period multiple) but the trend probe was confounded: bag-of-patches reached 0.89 on trend from
+the pooled feature there, because traffic level correlates with trend direction, whereas on ETT
+that correlation is absent and bag-of-patches falls to the theoretically expected chance. So each
+dataset has one clean order probe and one confounded or muted one, but the central thesis (order
+availability is set by positional encoding and is orthogonal to, even anticorrelated with, the
+across-time collapse) holds on both through the clean probe. The position-free pooled feature
+hitting exactly 0.500 on halfswap on both datasets is the architecture-independent anchor.
+
+### Forecasting on ETT: dual helps here, unlike PEMS
+
+The forecasting comparison on ETT (positional encoder, trajectory probe, three seeds) flips the
+PEMS downstream result. Reproduce with `uv run python scripts/compare.py --ett data/ETTh1.csv
+--steps 500 --batch-size 32 --num-slices 32 --forecast trajectory --seeds 3`.
+
+| placement | across-time var | eff rank      | trajectory MAE | trajectory MSE |
+|-----------|-----------------|---------------|----------------|----------------|
+| pooled    | 0.031 +- 0.006  | 10.9 +- 1.6   | 1.188 +- 0.059 | 2.369 +- 0.264 |
+| dual      | 0.534 +- 0.026  | 16.8 +- 0.3   | 1.136 +- 0.020 | 2.117 +- 0.089 |
+
+On ETT the dual placement forecasts better than pooled, about 4 percent lower MAE and 11 percent
+lower MSE, with the MSE bands barely overlapping, the opposite of the PEMS forecasting result
+where pooled was slightly ahead. The likely reason is that ETT forecasting at a twelve-step
+horizon genuinely needs temporal structure (electricity load swings over the day), whereas the
+PEMS short-horizon forecast was close to persistence, where the level a collapsed representation
+keeps is already enough. So whether preventing the collapse helps forecasting is dataset
+dependent, and it is not mainly about order recovery (positional encoding already supplies that)
+but about representation richness: dual carries a higher effective rank (16.8 against 10.9) that
+gives the linear head more to work with when the target is a structured trajectory rather than a
+near-constant level.
+
 ## Conclusion and next steps
 
 The central result, from the architecture factorial, is that the time-axis collapse diagnostic
@@ -326,11 +393,20 @@ downstream order availability, and across the factorial it is anticorrelated wit
 collapsed configuration keeps order and the least collapsed one loses it. What actually determines
 whether order survives is positional encoding in the encoder, an axis orthogonal to the placement
 that controls the collapse. So the dual placement, which robustly prevents the collapse, does not
-help downstream order tasks in either architecture: with a positional transformer the order is
-already present whether or not the tokens collapse, and with a position-free encoder the order is
-absent and preventing the collapse does not bring it back. Preventing the time-axis collapse is
-not, on this evidence, the right lever for representation quality on positional time-series
-encoders.
+recover order in either architecture: with a positional transformer the order is already present
+whether or not the tokens collapse, and with a position-free encoder the order is absent and
+preventing the collapse does not bring it back.
+
+That said, the dual placement is not useless, and the two datasets together draw the line cleanly.
+Dual carries a higher effective rank, a richer per-timestep representation, and whether that
+richness helps downstream depends on the task. On PEMS short-horizon forecasting, which is close
+to persistence, it does not, and pooled is slightly ahead. On ETT twelve-step forecasting, which
+genuinely needs temporal structure, dual is better by about 4 percent MAE and 11 percent MSE. So
+the honest synthesis is two-axis: preventing the collapse does not change order availability
+(that is positional encoding), but it does enrich the representation, and that enrichment pays off
+on downstream tasks whose targets are structured rather than near-constant. Preventing the
+collapse is not a universal good and not the right lever for order, but it helps representation
+richness where the task can use it.
 
 The supporting investigation is consistent with this. The dual placement prevents the time-axis
 collapse robustly and by a large margin on the positional encoder, and the lambda sweep shows the
