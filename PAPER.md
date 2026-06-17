@@ -252,8 +252,11 @@ features (0.93 to 0.98) and partially in its pooled feature (0.52 to 0.65), whic
 availability on a graded axis set by how globally the architecture mixes position: attention and
 positional encoding keep the most through pooling, convolution some, a position-free bag none.
 Effective rank dissociates from across-time variance as well: bag-of-patches has high variance but
-the lowest rank. Two geometric diagnostics, neither tracking order. Figure `figures/halfswap.png`
-shows the half-swap result.
+the lowest rank. Two geometric diagnostics, neither tracking order.
+
+![Half-swap order recovery on PEMS08. The positional transformer recovers order from both features
+in every placement, while the position-free bag-of-patches encoder sits at the chance line
+regardless of placement or feature.](figures/halfswap.png)
 
 ### 5.4 Simulated full collapse and the positional-encoding ablation
 
@@ -316,9 +319,12 @@ This is the clearest case where preventing the collapse helps. Dual beats pooled
 accuracy points on every probe, with non-overlapping bands, and the advantage holds under both a
 linear and a nonlinear MLP probe, so it is not an artifact of linear readout, and from both the
 pooled and the token feature. On this task pooled is heavily collapsed (across-time variance 0.019)
-and classifies poorly, while dual is uncollapsed (0.602) and classifies well. Figure
-`figures/har_classification.png`. We note that order availability and downstream benefit are not in
-conflict here: HAR is a task whose temporal structure the richer dual representation supplies.
+and classifies poorly, while dual is uncollapsed (0.602) and classifies well. We note that order
+availability and downstream benefit are not in conflict here: HAR is a task whose temporal
+structure the richer dual representation supplies.
+
+![UCI HAR: dual versus pooled under linear and MLP probes on pooled and token features. Dual wins
+by 8 to 11 points on every probe, with non-overlapping error bars.](figures/har_classification.png)
 
 ### 5.7 Lambda sweep and label-free model selection
 
