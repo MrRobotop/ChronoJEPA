@@ -43,12 +43,14 @@ the collapse and not the placement. The dual placement that fixes the collapse d
 order in either architecture: a positional encoder already has the order, and a position-free one
 cannot get it back by preventing the collapse. The factorial replicates on a second, very
 different dataset (ETT, electricity, 7 channels, hourly). What dual does change is representation
-richness (a higher effective rank), and whether that helps downstream is dataset dependent: it
-does not help PEMS short-horizon forecasting (near persistence) but it does help ETT twelve-step
-forecasting (about 4 percent lower MAE, 11 percent lower MSE), where the target is genuinely
-structured. So the two-axis picture is: preventing the collapse does not change order
-availability, but it enriches the representation and pays off when the task can use that. See
-`figures/halfswap.png` and the factorial and ETT tables in [RESULTS.md](RESULTS.md).
+richness (a higher effective rank), and whether that helps downstream is dataset dependent: across
+four datasets it does not help PEMS short-horizon forecasting (near persistence) but it does help
+all three ETT variants (ETTh1, ETTh2, ETTm1) by about 4 to 13 percent MAE with several times lower
+seed variance, where the target is genuinely structured. That benefit is capacity gated and
+largest at short horizons, so it is a richness effect rather than an order or horizon effect. The
+two-axis picture: preventing the collapse does not change order availability, but it enriches the
+representation and pays off when the task can use that. See `figures/halfswap.png` and the
+factorial, forecasting, and ETT tables in [RESULTS.md](RESULTS.md).
 
 The investigation that led there, in detail. On the real PEMS08 traffic benchmark, across five
 seeds, the dual placement robustly prevents

@@ -77,11 +77,13 @@ These are the milestones the experiments must compare:
   not track order availability and is anticorrelated with it (most-collapsed positional|pooled
   recovers a half-swap at 0.98, least-collapsed bagofpatches is at chance 0.50). Order is
   determined by positional encoding, an axis orthogonal to the placement that controls the
-  collapse, so dual recovers order in neither architecture. Replicated on a second dataset (ETT),
-  where it also adds a contrast: dual forecasting beats pooled there (MAE -4%, MSE -11%), unlike
-  PEMS, because ETT forecasting needs temporal structure. Two-axis synthesis: preventing collapse
-  does not change order (positional encoding does) but enriches the representation (higher
-  effective rank), which helps downstream tasks that can use it. See RESULTS.md and figures/.
+  collapse, so dual recovers order in neither architecture. External validity across four datasets:
+  the factorial replicates on ETT, and dual forecasting beats pooled on all three ETT variants
+  (ETTh1/h2/m1, MAE -4 to -13%, lower seed variance) but not on PEMS, the contrast being that ETT
+  forecasting needs temporal structure. That benefit is capacity-gated (needs d_model 64) and
+  largest at short horizons, so a richness effect. Two-axis synthesis: preventing collapse does not
+  change order (positional encoding does) but enriches the representation, helping tasks that can
+  use it. See RESULTS.md and figures/.
 - [x] **Phase 6: Label-free model selection.** `label_free_model_selection` ranks runs by
   final SIGReg loss and reports the Spearman correlation with the labeled downstream metric,
   the label-free pick versus the label-based pick, and whether they agree, with a thin CLI.

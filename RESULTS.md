@@ -363,27 +363,39 @@ availability is set by positional encoding and is orthogonal to, even anticorrel
 across-time collapse) holds on both through the clean probe. The position-free pooled feature
 hitting exactly 0.500 on halfswap on both datasets is the architecture-independent anchor.
 
-### Forecasting on ETT: dual helps here, unlike PEMS
+### Forecasting across four datasets: dual helps the ETT family, not PEMS
 
-The forecasting comparison on ETT (positional encoder, trajectory probe, three seeds) flips the
-PEMS downstream result. Reproduce with `uv run python scripts/compare.py --ett data/ETTh1.csv
---steps 500 --batch-size 32 --num-slices 32 --forecast trajectory --seeds 3`.
+The trajectory-forecasting comparison (positional encoder, three seeds, identical settings:
+d_model 64, 500 steps, batch 32, 32 slices, horizon 12) run on every dataset. Reproduce per
+dataset with `uv run python scripts/compare.py --ett data/ETTh1.csv --steps 500 --batch-size 32
+--num-slices 32 --forecast trajectory --seeds 3` (and `--ett data/ETTh2.csv`,
+`--ett data/ETTm1.csv`, or `--pems data/pems08.npz`).
 
-| placement | across-time var | eff rank      | trajectory MAE | trajectory MSE |
-|-----------|-----------------|---------------|----------------|----------------|
-| pooled    | 0.031 +- 0.006  | 10.9 +- 1.6   | 1.188 +- 0.059 | 2.369 +- 0.264 |
-| dual      | 0.534 +- 0.026  | 16.8 +- 0.3   | 1.136 +- 0.020 | 2.117 +- 0.089 |
+| dataset | pooled MAE     | dual MAE       | dual minus pooled | dual MSE vs pooled |
+|---------|----------------|----------------|-------------------|--------------------|
+| PEMS08  | 0.440 +- 0.005 | 0.457 +- 0.003 | +0.017 (pooled better) | 0.363 vs 0.393, pooled |
+| ETTh1   | 1.188 +- 0.059 | 1.136 +- 0.020 | -0.052 (dual better, ~1 sigma) | 2.12 vs 2.37 |
+| ETTh2   | 0.832 +- 0.086 | 0.721 +- 0.016 | -0.111 (dual better, ~13 percent) | 0.85 vs 1.15 |
+| ETTm1   | 0.630 +- 0.014 | 0.580 +- 0.003 | -0.050 (dual better, ~8 percent) | 0.59 vs 0.69 |
 
-On ETT the dual placement forecasts better than pooled, about 4 percent lower MAE and 11 percent
-lower MSE, with the MSE bands barely overlapping, the opposite of the PEMS forecasting result
-where pooled was slightly ahead. The likely reason is that ETT forecasting at a twelve-step
-horizon genuinely needs temporal structure (electricity load swings over the day), whereas the
-PEMS short-horizon forecast was close to persistence, where the level a collapsed representation
-keeps is already enough. So whether preventing the collapse helps forecasting is dataset
-dependent, and it is not mainly about order recovery (positional encoding already supplies that)
-but about representation richness: dual carries a higher effective rank (16.8 against 10.9) that
-gives the linear head more to work with when the target is a structured trajectory rather than a
-near-constant level.
+Dual forecasts better than pooled on all three ETT variants and worse on PEMS, so the direction
+of the downstream effect is dataset dependent and consistent within the ETT family. The benefit is
+clearest on ETTm1 (about 3.6 sigma) and ETTh2 and marginal on ETTh1 (about 1 sigma). Dual is also
+consistently the more stable representation: its seed-to-seed MAE standard deviation is several
+times smaller than pooled's on every ETT variant. The likely reason for the dataset split is that
+ETT forecasting needs the fine temporal structure dual's higher effective rank carries (about 17
+against 11), whereas the PEMS short-horizon forecast is close to persistence, where the level a
+collapsed representation already keeps is enough.
+
+Two honest caveats on the mechanism, both from the ETTh1 horizon sweep. First, the benefit is
+capacity dependent: at d_model 32 the ETTh1 dual advantage vanishes into the seed noise, and only
+at d_model 64 is it consistent. Second, we predicted the advantage would grow with horizon as the
+target needs more structure; it does the opposite. At d_model 64 the dual minus pooled MAE gap is
+largest at the shortest horizon (-0.070 at horizon 3) and shrinks as the horizon grows (-0.038 at
+horizon 48), because long horizons revert toward the periodic mean where level matters more, while
+short horizons reward the fine structure dual preserves. So dual's forecasting benefit on ETT is
+real and replicated across three variants, but it is a capacity-gated, short-horizon, richness
+effect, not a clean function of horizon.
 
 ## Conclusion and next steps
 
@@ -397,12 +409,15 @@ recover order in either architecture: with a positional transformer the order is
 whether or not the tokens collapse, and with a position-free encoder the order is absent and
 preventing the collapse does not bring it back.
 
-That said, the dual placement is not useless, and the two datasets together draw the line cleanly.
+That said, the dual placement is not useless, and four datasets together draw the line cleanly.
 Dual carries a higher effective rank, a richer per-timestep representation, and whether that
-richness helps downstream depends on the task. On PEMS short-horizon forecasting, which is close
-to persistence, it does not, and pooled is slightly ahead. On ETT twelve-step forecasting, which
-genuinely needs temporal structure, dual is better by about 4 percent MAE and 11 percent MSE. So
-the honest synthesis is two-axis: preventing the collapse does not change order availability
+richness helps downstream depends on the dataset. On PEMS short-horizon forecasting, which is
+close to persistence, it does not, and pooled is slightly ahead. On all three ETT variants
+(ETTh1, ETTh2, ETTm1), which need fine temporal structure, dual forecasts better, by about 4 to 13
+percent MAE and with several times lower seed variance. The effect is capacity gated (it needs
+d_model 64, vanishing at 32) and largest at short horizons rather than long, so it is a richness
+effect, not an order effect or a clean horizon effect. So the honest synthesis is two-axis:
+preventing the collapse does not change order availability
 (that is positional encoding), but it does enrich the representation, and that enrichment pays off
 on downstream tasks whose targets are structured rather than near-constant. Preventing the
 collapse is not a universal good and not the right lever for order, but it helps representation
