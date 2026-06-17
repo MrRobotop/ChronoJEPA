@@ -14,7 +14,7 @@ import torch
 from torch.utils.data import DataLoader
 
 from chronojepa.data import TwoViewAugmentation, WindowDataset
-from chronojepa.models import PatchTSTEncoder
+from chronojepa.models import BagOfPatchesEncoder, PatchTSTEncoder, TCNEncoder
 from chronojepa.sigreg import make_sigreg
 from chronojepa.train import train
 from chronojepa.utils.devices import get_device
@@ -26,6 +26,31 @@ from .probes import extract_features, linear_probe, mlp_probe
 _KEYS = ("linear_pooled", "mlp_pooled", "linear_token", "mlp_token", "across_time_variance")
 
 
+def _build_encoder(
+    architecture: str,
+    channels: int,
+    d_model: int,
+    patch_len: int,
+    stride: int,
+    depth: int,
+    n_heads: int,
+):
+    if architecture == "positional":
+        return PatchTSTEncoder(
+            num_channels=channels,
+            patch_len=patch_len,
+            stride=stride,
+            d_model=d_model,
+            depth=depth,
+            n_heads=n_heads,
+        )
+    if architecture == "tcn":
+        return TCNEncoder(num_channels=channels, d_model=d_model, kernel_size=3, num_layers=3)
+    if architecture == "bagofpatches":
+        return BagOfPatchesEncoder(num_channels=channels, patch_len=patch_len, d_model=d_model)
+    raise ValueError(f"unknown architecture {architecture!r}")
+
+
 def run_ssl_classification(
     x_train: np.ndarray,
     y_train: np.ndarray,
@@ -33,6 +58,7 @@ def run_ssl_classification(
     y_test: np.ndarray,
     *,
     placements: tuple[str, ...] = ("pooled", "dual"),
+    architecture: str = "positional",
     seeds: tuple[int, ...] = (0, 1, 2),
     steps: int = 500,
     d_model: int = 32,
@@ -47,7 +73,8 @@ def run_ssl_classification(
     results_path: str | Path | None = None,
 ) -> dict[str, dict[str, dict[str, float]]]:
     """Per-placement classification accuracy from linear and MLP probes on pooled and token
-    features, plus the across-time variance. Returns ``{placement: {key: {mean, std, values}}}``."""
+    features, plus the across-time variance, for one encoder ``architecture`` (positional, tcn,
+    or bagofpatches). Returns ``{placement: {key: {mean, std, values}}}``."""
     device = device or get_device()
     channels = x_train.shape[1]
     raw = {placement: {key: [] for key in _KEYS} for placement in placements}
@@ -65,13 +92,8 @@ def run_ssl_classification(
                 shuffle=True,
                 generator=torch.Generator().manual_seed(seed),
             )
-            encoder = PatchTSTEncoder(
-                num_channels=channels,
-                patch_len=patch_len,
-                stride=stride,
-                d_model=d_model,
-                depth=depth,
-                n_heads=n_heads,
+            encoder = _build_encoder(
+                architecture, channels, d_model, patch_len, stride, depth, n_heads
             )
             train(
                 encoder,

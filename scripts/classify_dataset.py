@@ -17,6 +17,11 @@ def main(argv: list[str] | None = None) -> dict:
     parser.add_argument("--steps", type=int, default=500)
     parser.add_argument("--seeds", type=int, default=5)
     parser.add_argument("--d-model", type=int, default=32)
+    parser.add_argument(
+        "--architecture",
+        choices=("positional", "tcn", "bagofpatches"),
+        default="positional",
+    )
     parser.add_argument("--out", default="results/har_classification.json")
     args = parser.parse_args(argv)
 
@@ -26,6 +31,7 @@ def main(argv: list[str] | None = None) -> dict:
         y_train,
         x_test,
         y_test,
+        architecture=args.architecture,
         seeds=tuple(range(args.seeds)),
         steps=args.steps,
         d_model=args.d_model,
