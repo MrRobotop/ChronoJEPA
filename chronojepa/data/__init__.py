@@ -3,6 +3,7 @@
 from .augment import TwoViewAugmentation
 from .dataset import WindowDataset, build_dataloaders
 from .ett import load_ett
+from .har import load_har
 from .pems import load_pems
 from .windowing import StandardScaler, sliding_windows, time_split
 
@@ -12,6 +13,7 @@ __all__ = [
     "WindowDataset",
     "build_dataloaders",
     "load_ett",
+    "load_har",
     "load_pems",
     "sliding_windows",
     "time_split",

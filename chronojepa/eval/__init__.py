@@ -1,6 +1,7 @@
 """Linear and kNN probes, forecasting, Mahalanobis anomaly scoring, label-free selection."""
 
 from .anomaly import MahalanobisScorer, inject_anomaly
+from .classification_dataset import format_ssl_classification_table, run_ssl_classification
 from .collapse import across_time_variance, collapse_report, effective_rank
 from .comparison import (
     format_anomaly_table,
@@ -36,6 +37,7 @@ __all__ = [
     "format_horizon_table",
     "format_lambda_table",
     "format_multiseed_table",
+    "format_ssl_classification_table",
     "inject_anomaly",
     "knn_probe",
     "label_free_model_selection",
@@ -49,5 +51,6 @@ __all__ = [
     "run_lambda_sweep",
     "run_multiseed_comparison",
     "run_placement_comparison",
+    "run_ssl_classification",
     "selection_report",
 ]
