@@ -187,30 +187,37 @@ Three findings.
 
 ## PEMS08 temporal-structure classification (the first place dual wins)
 
-A frozen-encoder linear probe on token features, classifying two binary labels built from the
-windows: `trend` (is the second half's mean above the first half's, a pure temporal-order
-property) and `level` (is the window mean above the train median, a control any representation
-can do). Three seeds, 500 steps. Reproduce with:
+A frozen-encoder linear probe on token features, classifying three binary labels built from the
+windows: `trend` (is the second half's mean above the first half's, a subtle temporal-order
+property), `level` (is the window mean above the train median, a control any representation can
+do), and `halfswap` (a window against the same window with its two halves swapped, a content
+matched pure-position task: the value multiset is identical, only the order changes). Three
+seeds, 500 steps. Reproduce with:
 
 ```bash
 uv run python scripts/classify.py --pems data/pems08.npz --seeds 3
 ```
 
-| placement | trend accuracy   | level accuracy   |
-|-----------|------------------|------------------|
-| pooled    | 0.9747 +- 0.0038 | 0.9946 +- 0.0011 |
-| dual      | 0.9793 +- 0.0000 | 0.9946 +- 0.0022 |
+| placement | trend accuracy   | level accuracy   | halfswap accuracy |
+|-----------|------------------|------------------|-------------------|
+| pooled    | 0.9747 +- 0.0038 | 0.9946 +- 0.0011 | 1.0000 +- 0.0000  |
+| dual      | 0.9793 +- 0.0000 | 0.9946 +- 0.0022 | 0.9996 +- 0.0005  |
 
-What it shows. On the level control both placements tie at 0.995, as expected. On the trend
-task, which genuinely needs temporal order, dual is the better representation: 0.9793 against
-0.9747, a gap of about half a percentage point that is consistent across all three seeds (dual's
-accuracy sits just above pooled's mean plus one standard deviation). This is the first and only
-downstream task in this study where dual beats pooled, and it is exactly the temporal-order task
-dual's within-sequence term should suit. The effect is small and near ceiling because even a
-collapsed encoder is not order-invariant: a rising window and a falling window have different
-patch contents, so pooled still reaches 0.975. But the direction is the predicted one, which is
-the first positive evidence that preserving per-timestep structure helps when the task depends on
-it.
+What it shows. On the level control both placements tie at 0.995. On the subtle trend task, which
+needs temporal order, dual is the better representation: 0.9793 against 0.9747, a gap of about
+half a percentage point consistent across all three seeds (dual's accuracy sits just above
+pooled's mean plus one standard deviation). This is the one downstream task where dual beats
+pooled, and it is exactly the temporal-order task dual's within-sequence term should suit.
+
+The halfswap task was meant to be the decisive test: with content matched exactly, a
+position-blind representation should sit near chance and only a position-aware one should
+classify it. Instead both placements are at ceiling, pooled at 1.000 and dual at 0.9996. The
+lesson is that the collapse on PEMS is only partial: pooled's across-time variance is about 0.06,
+not zero, and a gross half-swap of 48 steps is such a large systematic change that even that
+residual 6 percent of temporal signal lets a linear probe separate the two classes perfectly. So
+pooled is never actually position-blind here, which is why dual's advantage appears only on the
+subtle trend task and stays small. The decisive separation would need a setting where pooled
+collapses fully (across-time variance near zero), which does not occur naturally on this data.
 
 ## Conclusion and next steps
 
@@ -234,22 +241,31 @@ scales. The overall picture on this benchmark: the time-axis collapse is real an
 downstream-benign, the dual placement that fixes it trades slightly against forecasting, and
 SIGReg loss is not a reliable label-free selector for this task.
 
-The classification experiment then supplied the missing piece and the first positive evidence for
-dual. On a temporal-order task (trend classification) dual beats pooled, consistently across
-seeds, while the two tie on the level control. The margin is small and near ceiling, because the
-PatchTST encoder stays content-sensitive even when collapsed, but the direction is the predicted
-one: preserving per-timestep structure helps exactly when the task depends on order.
+The classification experiment supplied the first positive evidence for dual and then explained
+why it stays small. On the subtle trend task dual beats pooled consistently across seeds, while
+the two tie on the level control. But on halfswap, a content-matched pure-position task built to
+be decisive, both placements are at ceiling. That pins down the real limiting factor: the
+collapse on PEMS is partial, not total. Pooled's across-time variance is about 0.06 rather than
+zero, which is small relative to dual's 0.6 but still enough temporal signal for a linear probe
+to handle gross position tasks perfectly. So pooled is never actually position-blind, and dual's
+edge survives only on the subtle trend task.
 
-So the full picture across five tests is coherent and task-type dependent. The time-axis collapse
-is real and large, and the dual placement robustly fixes it. On tasks that reward the level a
-collapsed representation already keeps (forecasting at any horizon, level classification), pooled
-is as good or slightly better, and the SIGReg regularization that prevents collapse trades a
-little against the linear forecaster. On a task that genuinely needs temporal order (trend
-classification), dual is better. The magnitudes are small throughout because the encoder is not
-order-invariant regardless of collapse. A reasonable conclusion for LeJEPA issue #27 is that the
-time-axis collapse should be diagnosed and fixed only when the downstream task depends on
-per-timestep structure; for level-driven forecasting it does not need fixing, and SIGReg loss is
-not a reliable label-free selector there.
+So the full picture across six tests is coherent. The time-axis collapse is real and large in
+relative terms, the dual placement robustly fixes it, but on PEMS the collapse is partial, so the
+collapsed representation keeps enough level and residual position signal to match pooled on
+forecasting (at any horizon), anomaly detection, level classification, and even a gross
+position swap. Dual's advantage appears only on the one subtle order-dependent task, and the
+SIGReg regularization that prevents collapse trades slightly against the linear forecaster. A
+reasonable conclusion for LeJEPA issue #27 is that on PEMS-style data the time-axis collapse is
+partial and downstream-benign, so it should be diagnosed and fixed only when the task both depends
+on per-timestep order and is subtle enough that the residual signal in a collapsed representation
+is insufficient; for level-driven forecasting it does not need fixing, and SIGReg loss is not a
+reliable label-free selector there.
+
+A clean decisive test would require a setting where pooled collapses fully (across-time variance
+near zero). That did not occur naturally on PEMS within these training budgets, so whether a fully
+collapsed representation would fail an order task as sharply as the mechanism predicts is the
+remaining open question, alongside longer training and a non-saturating anomaly detector.
 
 What remains open: the trend effect is small, so larger and more clearly order-dependent tasks
 (regime or phase classification, long-horizon forecasting past persistence) would test whether the

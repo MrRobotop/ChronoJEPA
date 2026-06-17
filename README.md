@@ -50,12 +50,17 @@ raises effective rank but monotonically worsens dual's forecasting, and final SI
 not track downstream quality, so LeJEPA's label-free selection claim does not transfer to this
 task. A fifth test finally finds where dual wins: on a temporal-order classification task (is the
 window rising or falling) dual beats pooled, consistently across seeds, while both tie on a level
-control. The margin is small and near ceiling, but the direction is the predicted one. So the
-picture is task-type dependent: the time-axis collapse is real and large, fixing it does not help
-level-driven forecasting and is mildly costly there, but it helps a task that genuinely needs
-per-timestep order. The practical takeaway is to fix the collapse only when the downstream task
-depends on temporal structure. See [RESULTS.md](RESULTS.md) for the full tables, the refuted
-hypotheses, and the experiments behind this.
+control. The margin is small but in the predicted direction. A content-matched pure-position task
+(window vs the same window with halves swapped), built to be decisive, then saturated for both at
+once, which pinned down why every effect is small: the collapse on PEMS is partial (pooled's
+across-time variance is about 0.06, not zero), so pooled keeps enough residual signal to match
+dual on all but the subtlest order task. So the picture across six tests is task-type dependent:
+the collapse is real and large in relative terms but partial and downstream-benign, fixing it does
+not help level-driven forecasting and is mildly costly there, and helps only a subtle
+order-dependent task. The practical takeaway is to fix the collapse only when the task depends on
+per-timestep order and is subtle enough that a partially collapsed representation cannot cope. See
+[RESULTS.md](RESULTS.md) for the full tables, the refuted hypotheses, and the experiments behind
+this.
 
 ## Tech stack
 

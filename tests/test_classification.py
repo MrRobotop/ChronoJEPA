@@ -19,7 +19,7 @@ def test_run_classification_comparison_structure() -> None:
         _series(),
         seeds=(0,),
         placements=("pooled", "dual"),
-        label_kinds=("trend", "level"),
+        label_kinds=("trend", "level", "halfswap"),
         steps=5,
         window=48,
         stride=8,
@@ -29,7 +29,7 @@ def test_run_classification_comparison_structure() -> None:
         device=torch.device("cpu"),
     )
     for placement in ("pooled", "dual"):
-        for kind in ("trend", "level"):
+        for kind in ("trend", "level", "halfswap"):
             entry = agg[placement][kind]
             assert set(entry) == {"mean", "std", "values"}
             assert 0.0 <= entry["mean"] <= 1.0

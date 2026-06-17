@@ -634,12 +634,43 @@ def _classification_labels(
     raise ValueError(f"unknown label kind {kind!r}")
 
 
+def _halfswap_accuracy(
+    encoder, train_windows, test_windows, features_train, features_test, device, pool
+) -> float:
+    """Classify a window (label 0) against the same window with halves swapped (label 1).
+
+    Swapping the two halves keeps the exact value multiset and changes only temporal
+    position, so this isolates position. The original-window features are reused; only the
+    swapped versions need a fresh forward pass.
+    """
+    half = train_windows.shape[2] // 2
+    swapped_train = np.roll(train_windows, half, axis=2)
+    swapped_test = np.roll(test_windows, half, axis=2)
+    x_train = np.concatenate(
+        [
+            features_train,
+            extract_features(encoder, torch.from_numpy(swapped_train), device, pool=pool),
+        ]
+    )
+    x_test = np.concatenate(
+        [
+            features_test,
+            extract_features(encoder, torch.from_numpy(swapped_test), device, pool=pool),
+        ]
+    )
+    y_train = np.concatenate([np.zeros(len(features_train)), np.ones(len(swapped_train))]).astype(
+        int
+    )
+    y_test = np.concatenate([np.zeros(len(features_test)), np.ones(len(swapped_test))]).astype(int)
+    return linear_probe(x_train, y_train, x_test, y_test)
+
+
 def run_classification_comparison(
     series: np.ndarray,
     *,
     seeds: tuple[int, ...] = (0, 1, 2),
     placements: tuple[str, ...] = ("pooled", "dual"),
-    label_kinds: tuple[str, ...] = ("trend", "level"),
+    label_kinds: tuple[str, ...] = ("trend", "level", "halfswap"),
     steps: int = 500,
     window: int = 96,
     stride: int = 8,
@@ -686,9 +717,20 @@ def run_classification_comparison(
                 encoder, torch.from_numpy(test_windows), device, pool=pool
             )
             for kind in label_kinds:
-                y_train, cut = _classification_labels(train_windows, kind)
-                y_test, _ = _classification_labels(test_windows, kind, threshold=cut)
-                accuracy = linear_probe(features_train, y_train, features_test, y_test)
+                if kind == "halfswap":
+                    accuracy = _halfswap_accuracy(
+                        encoder,
+                        train_windows,
+                        test_windows,
+                        features_train,
+                        features_test,
+                        device,
+                        pool,
+                    )
+                else:
+                    y_train, cut = _classification_labels(train_windows, kind)
+                    y_test, _ = _classification_labels(test_windows, kind, threshold=cut)
+                    accuracy = linear_probe(features_train, y_train, features_test, y_test)
                 raw[placement][kind].append(accuracy)
 
     aggregate: dict[str, dict[str, dict[str, float]]] = {}

@@ -70,9 +70,11 @@ These are the milestones the experiments must compare:
   reveals a SIGReg-vs-forecasting tension (higher lambda raises rank but worsens dual forecasting)
   and shows label-free selection by SIGReg loss does not transfer here. A temporal-order
   classification task (trend) is the first place dual beats pooled (0.979 vs 0.975, consistent
-  across seeds), while both tie on a level control. So the picture is task-type dependent: fixing
-  the collapse helps tasks that need per-timestep order, not level-driven forecasting. See
-  RESULTS.md.
+  across seeds), while both tie on a level control and on a content-matched halfswap task (both at
+  ceiling). The halfswap saturation pins the limiting factor: the collapse on PEMS is partial
+  (pooled across-time variance about 0.06, not zero), so pooled keeps enough residual signal to
+  match dual on all but the subtlest order task. Picture across six tests is task-type dependent
+  and the collapse is downstream-benign on PEMS. See RESULTS.md.
 - [x] **Phase 6: Label-free model selection.** `label_free_model_selection` ranks runs by
   final SIGReg loss and reports the Spearman correlation with the labeled downstream metric,
   the label-free pick versus the label-based pick, and whether they agree, with a thin CLI.
