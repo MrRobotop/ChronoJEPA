@@ -8,7 +8,7 @@ import torch
 from sklearn.metrics import roc_auc_score
 
 from chronojepa.data import TwoViewAugmentation, build_dataloaders, sliding_windows
-from chronojepa.models import BagOfPatchesEncoder, PatchTSTEncoder
+from chronojepa.models import BagOfPatchesEncoder, PatchTSTEncoder, TCNEncoder
 from chronojepa.sigreg import make_sigreg
 from chronojepa.train import train
 from chronojepa.utils.devices import get_device
@@ -819,6 +819,9 @@ def run_architecture_study(
     architectures = {
         "positional": lambda channels: PatchTSTEncoder(
             num_channels=channels, patch_len=16, stride=8, d_model=d_model, depth=2, n_heads=4
+        ),
+        "tcn": lambda channels: TCNEncoder(
+            num_channels=channels, d_model=d_model, kernel_size=3, num_layers=3
         ),
         "bagofpatches": lambda channels: BagOfPatchesEncoder(
             num_channels=channels, patch_len=16, d_model=d_model

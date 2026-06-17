@@ -19,7 +19,8 @@ from .comparison import (
     run_placement_comparison,
 )
 from .model_selection import label_free_model_selection, selection_report
-from .probes import extract_features, forecast_linear_probe, knn_probe, linear_probe
+from .probes import extract_features, forecast_linear_probe, knn_probe, linear_probe, mlp_probe
+from .stats import paired_difference
 
 __all__ = [
     "MahalanobisScorer",
@@ -39,6 +40,8 @@ __all__ = [
     "knn_probe",
     "label_free_model_selection",
     "linear_probe",
+    "mlp_probe",
+    "paired_difference",
     "run_anomaly_comparison",
     "run_architecture_study",
     "run_classification_comparison",

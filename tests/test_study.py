@@ -30,6 +30,8 @@ def test_run_architecture_study_structure() -> None:
     assert set(agg) == {
         "positional|pooled",
         "positional|dual",
+        "tcn|pooled",
+        "tcn|dual",
         "bagofpatches|pooled",
         "bagofpatches|dual",
     }

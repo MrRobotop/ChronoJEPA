@@ -5,6 +5,8 @@ import torch
 from sklearn.linear_model import LinearRegression, LogisticRegression
 from sklearn.metrics import accuracy_score, mean_absolute_error, mean_squared_error
 from sklearn.neighbors import KNeighborsClassifier
+from sklearn.neural_network import MLPClassifier
+from sklearn.preprocessing import StandardScaler
 from torch import Tensor, nn
 
 
@@ -50,6 +52,26 @@ def knn_probe(
     """Accuracy of a kNN probe on frozen features."""
     model = KNeighborsClassifier(n_neighbors=n_neighbors).fit(x_train, y_train)
     return float(accuracy_score(y_test, model.predict(x_test)))
+
+
+def mlp_probe(
+    x_train: np.ndarray,
+    y_train: np.ndarray,
+    x_test: np.ndarray,
+    y_test: np.ndarray,
+    hidden: tuple[int, ...] = (128,),
+    max_iter: int = 300,
+    seed: int = 0,
+) -> float:
+    """Accuracy of a nonlinear MLP probe on frozen features (standardized inputs).
+
+    A nonlinear readout checks whether conclusions drawn from the linear probe survive when
+    the probe can use nonlinear structure in the features.
+    """
+    scaler = StandardScaler().fit(x_train)
+    model = MLPClassifier(hidden_layer_sizes=hidden, max_iter=max_iter, random_state=seed)
+    model.fit(scaler.transform(x_train), y_train)
+    return float(accuracy_score(y_test, model.predict(scaler.transform(x_test))))
 
 
 def forecast_linear_probe(
