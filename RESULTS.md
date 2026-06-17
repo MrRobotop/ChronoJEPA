@@ -363,29 +363,33 @@ availability is set by positional encoding and is orthogonal to, even anticorrel
 across-time collapse) holds on both through the clean probe. The position-free pooled feature
 hitting exactly 0.500 on halfswap on both datasets is the architecture-independent anchor.
 
-### Forecasting across four datasets: dual helps the ETT family, not PEMS
+### Forecasting across four datasets, eight seeds, with paired significance tests
 
-The trajectory-forecasting comparison (positional encoder, three seeds, identical settings:
-d_model 64, 500 steps, batch 32, 32 slices, horizon 12) run on every dataset. Reproduce per
+The trajectory-forecasting comparison (positional encoder, identical settings: d_model 64, 500
+steps, batch 32, 32 slices, horizon 12) run on every dataset with eight seeds, and a paired t-test
+plus a 95 percent bootstrap CI on the dual-minus-pooled MAE gap (paired by seed). Reproduce per
 dataset with `uv run python scripts/compare.py --ett data/ETTh1.csv --steps 500 --batch-size 32
---num-slices 32 --forecast trajectory --seeds 3` (and `--ett data/ETTh2.csv`,
-`--ett data/ETTm1.csv`, or `--pems data/pems08.npz`).
+--num-slices 32 --forecast trajectory --seeds 8` (and `--ett data/ETTh2.csv`, `--ett
+data/ETTm1.csv`, or `--pems data/pems08.npz`).
 
-| dataset | pooled MAE     | dual MAE       | dual minus pooled | dual MSE vs pooled |
-|---------|----------------|----------------|-------------------|--------------------|
-| PEMS08  | 0.440 +- 0.005 | 0.457 +- 0.003 | +0.017 (pooled better) | 0.363 vs 0.393, pooled |
-| ETTh1   | 1.188 +- 0.059 | 1.136 +- 0.020 | -0.052 (dual better, ~1 sigma) | 2.12 vs 2.37 |
-| ETTh2   | 0.832 +- 0.086 | 0.721 +- 0.016 | -0.111 (dual better, ~13 percent) | 0.85 vs 1.15 |
-| ETTm1   | 0.630 +- 0.014 | 0.580 +- 0.003 | -0.050 (dual better, ~8 percent) | 0.59 vs 0.69 |
+| dataset | pooled MAE | dual MAE | gap (dual-pooled) | p     | 95% CI on gap     | verdict                  |
+|---------|------------|----------|-------------------|-------|-------------------|--------------------------|
+| PEMS08  | 0.4421     | 0.4563   | +0.0142           | 0.001 | [+0.009, +0.019]  | pooled better (sig)      |
+| ETTh1   | 1.1833     | 1.1614   | -0.0219           | 0.52  | [-0.086, +0.033]  | no difference (null)     |
+| ETTh2   | 0.8589     | 0.7378   | -0.1211           | 0.0004| [-0.156, -0.088]  | dual better (sig)        |
+| ETTm1   | 0.6337     | 0.5843   | -0.0494           | <1e-4 | [-0.056, -0.043]  | dual better (sig)        |
 
-Dual forecasts better than pooled on all three ETT variants and worse on PEMS, so the direction
-of the downstream effect is dataset dependent and consistent within the ETT family. The benefit is
-clearest on ETTm1 (about 3.6 sigma) and ETTh2 and marginal on ETTh1 (about 1 sigma). Dual is also
-consistently the more stable representation: its seed-to-seed MAE standard deviation is several
-times smaller than pooled's on every ETT variant. The likely reason for the dataset split is that
-ETT forecasting needs the fine temporal structure dual's higher effective rank carries (about 17
-against 11), whereas the PEMS short-horizon forecast is close to persistence, where the level a
-collapsed representation already keeps is enough.
+The significance pass corrected an earlier overclaim. At three seeds dual looked about one sigma
+better on ETTh1; at eight seeds that gap is not significant (the CI straddles zero), so we do not
+claim a forecasting benefit on ETTh1. The robust, CI-excludes-zero results are: dual significantly
+better on ETTh2 (about 14 percent) and ETTm1 (about 8 percent), pooled significantly better on
+PEMS (about 3 percent), and no reliable difference on ETTh1. So dual's forecasting benefit is real
+on two of the three ETT variants and absent on PEMS, the direction being dataset dependent. Dual is
+also consistently the more stable representation: its seed-to-seed MAE standard deviation is
+several times smaller than pooled's on every ETT variant. The likely reason for the dataset split
+is that ETT forecasting needs the fine temporal structure dual's higher effective rank carries
+(about 17 against 11), whereas the PEMS short-horizon forecast is close to persistence, where the
+level a collapsed representation already keeps is enough.
 
 Two honest caveats on the mechanism, both from the ETTh1 horizon sweep. First, the benefit is
 capacity dependent: at d_model 32 the ETTh1 dual advantage vanishes into the seed noise, and only
@@ -394,8 +398,45 @@ target needs more structure; it does the opposite. At d_model 64 the dual minus 
 largest at the shortest horizon (-0.070 at horizon 3) and shrinks as the horizon grows (-0.038 at
 horizon 48), because long horizons revert toward the periodic mean where level matters more, while
 short horizons reward the fine structure dual preserves. So dual's forecasting benefit on ETT is
-real and replicated across three variants, but it is a capacity-gated, short-horizon, richness
-effect, not a clean function of horizon.
+real on two of three variants (ETTh2 and ETTm1, both significant), null on ETTh1, and it is a
+capacity-gated, short-horizon, richness effect, not a clean function of horizon.
+
+### TCN as a third architecture: the factorial pattern generalizes
+
+Adding a TCN (positional via convolution) as a third architecture in the factorial, five seeds,
+on PEMS and ETTh1. The position-free bag-of-patches pooled feature is again at exactly 0.500 on
+halfswap on both datasets, the architecture-independent anchor. The TCN is intermediate: its token
+features retain order (PEMS halfswap-token about 0.93 to 0.98, like the positional encoder and
+unlike the position-free 0.49), while its pooled feature retains order only partially (PEMS
+halfswap-pooled 0.52 to 0.65, between positional's 0.97 and the position-free 0.50). So
+order-availability is graded by how globally the architecture mixes position: attention plus
+positional encoding keeps the most order through pooling, convolution keeps some, a position-free
+bag keeps none. Crucially, the across-time-variance anticorrelation holds across all three
+architectures: the positional encoder has the lowest variance (PEMS 0.11) yet the best
+pooled-feature order (0.97), while the TCN has by far the highest variance (PEMS dual 5.2) yet
+worse pooled-feature order (0.65), and the position-free bag has high variance and zero order. The
+collapse diagnostic does not track order in any of the three.
+
+### Real labeled task: dual clearly helps HAR classification
+
+UCI HAR (human activity recognition from smartphone inertial sensors: 9 channels, 128 steps, six
+activities, about 7350 train sequences) is a real labeled, order-dependent task in a third domain.
+We pretrain self-supervised on the train sequences and probe the frozen features. Five seeds.
+Reproduce with `uv run python scripts/classify_dataset.py --har "data/UCI HAR Dataset" --seeds 5`.
+
+| placement | linear pooled  | MLP pooled     | linear token   | MLP token      | across-time var |
+|-----------|----------------|----------------|----------------|----------------|-----------------|
+| pooled    | 0.576 +- 0.008 | 0.633 +- 0.014 | 0.636 +- 0.009 | 0.679 +- 0.016 | 0.019 +- 0.003  |
+| dual      | 0.655 +- 0.023 | 0.718 +- 0.021 | 0.740 +- 0.024 | 0.788 +- 0.023 | 0.602 +- 0.052  |
+
+This is the strongest constructive result for dual and the clearest case where preventing the
+collapse helps. Dual beats pooled by 8 to 11 accuracy points on every probe, with non-overlapping
+bands, and the advantage holds under both a linear and a nonlinear MLP probe, so it is not an
+artifact of linear readout. It holds from both the pooled and the token feature. On this task the
+pooled placement is heavily collapsed (across-time variance 0.019) and classifies poorly, while
+dual is uncollapsed (0.602) and classifies well. So unlike PEMS forecasting, HAR activity
+recognition is a real task whose temporal structure the dual representation genuinely supplies, and
+the figure is in `figures/har_classification.png`.
 
 ## Conclusion and next steps
 
@@ -409,15 +450,20 @@ recover order in either architecture: with a positional transformer the order is
 whether or not the tokens collapse, and with a position-free encoder the order is absent and
 preventing the collapse does not bring it back.
 
-That said, the dual placement is not useless, and four datasets together draw the line cleanly.
-Dual carries a higher effective rank, a richer per-timestep representation, and whether that
-richness helps downstream depends on the dataset. On PEMS short-horizon forecasting, which is
-close to persistence, it does not, and pooled is slightly ahead. On all three ETT variants
-(ETTh1, ETTh2, ETTm1), which need fine temporal structure, dual forecasts better, by about 4 to 13
-percent MAE and with several times lower seed variance. The effect is capacity gated (it needs
-d_model 64, vanishing at 32) and largest at short horizons rather than long, so it is a richness
-effect, not an order effect or a clean horizon effect. So the honest synthesis is two-axis:
-preventing the collapse does not change order availability
+That central result is corroborated by a third architecture (TCN) and a second dataset (ETT), and
+the across-time-variance anticorrelation holds across all three architectures.
+
+The dual placement is far from useless, though, and on the strongest test it clearly wins. Dual
+carries a higher effective rank, a richer per-timestep representation, and whether that richness
+helps depends on whether the task needs it, established now with significance tests across five
+datasets. On a real labeled task, UCI HAR activity recognition, dual beats pooled by 8 to 11
+accuracy points under both linear and nonlinear probes, with non-overlapping bands, the clearest
+case where preventing the collapse helps. On forecasting, an eight-seed paired test puts the gap on
+firm footing: dual is significantly better on ETTh2 and ETTm1 (CI excludes zero), pooled is
+significantly better on PEMS, and there is no reliable difference on ETTh1 (an earlier three-seed
+ETTh1 advantage did not survive). The forecasting benefit is also capacity gated and largest at
+short horizons, so it is a richness effect, not an order effect or a clean horizon effect. So the
+honest synthesis is two-axis: preventing the collapse does not change order availability
 (that is positional encoding), but it does enrich the representation, and that enrichment pays off
 on downstream tasks whose targets are structured rather than near-constant. Preventing the
 collapse is not a universal good and not the right lever for order, but it helps representation
