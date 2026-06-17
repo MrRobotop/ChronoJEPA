@@ -29,11 +29,19 @@ class WandbLogger:
     """Opt-in Weights and Biases logger. Imports wandb lazily and defaults to offline."""
 
     def __init__(
-        self, project: str = "chronojepa", mode: str = "offline", config: dict | None = None
+        self,
+        project: str = "chronojepa",
+        mode: str = "offline",
+        config: dict | None = None,
+        name: str | None = None,
+        group: str | None = None,
+        tags: list[str] | None = None,
     ) -> None:
         import wandb  # noqa: PLC0415  (lazy: keeps wandb an optional dependency)
 
-        self.run = wandb.init(project=project, mode=mode, config=config)
+        self.run = wandb.init(
+            project=project, mode=mode, config=config, name=name, group=group, tags=tags
+        )
         self.history: list[dict[str, Any]] = []
 
     def log(self, metrics: dict[str, Any], step: int) -> None:

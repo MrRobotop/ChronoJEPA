@@ -71,6 +71,9 @@ def run_experiment(cfg: DictConfig, output_dir: str | Path | None = None) -> Run
             project=cfg.wandb.project,
             mode=cfg.wandb.mode,
             config=OmegaConf.to_container(cfg, resolve=True),
+            name=f"{cfg.placement}-lam{cfg.lam}-seed{cfg.seed}",
+            group=cfg.wandb.get("group", None),
+            tags=[cfg.placement, cfg.model.name],
         )
     else:
         logger = RunLogger()
