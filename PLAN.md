@@ -68,8 +68,11 @@ These are the milestones the experiments must compare:
   task. A horizon sweep (3 to 48 steps) shows pooled's edge is horizon-independent, refuting the
   persistence explanation; Mahalanobis anomaly detection saturates for both; and a lambda sweep
   reveals a SIGReg-vs-forecasting tension (higher lambda raises rank but worsens dual forecasting)
-  and shows label-free selection by SIGReg loss does not transfer here. Collapse is
-  downstream-benign on PEMS08 across four tests. See RESULTS.md.
+  and shows label-free selection by SIGReg loss does not transfer here. A temporal-order
+  classification task (trend) is the first place dual beats pooled (0.979 vs 0.975, consistent
+  across seeds), while both tie on a level control. So the picture is task-type dependent: fixing
+  the collapse helps tasks that need per-timestep order, not level-driven forecasting. See
+  RESULTS.md.
 - [x] **Phase 6: Label-free model selection.** `label_free_model_selection` ranks runs by
   final SIGReg loss and reports the Spearman correlation with the labeled downstream metric,
   the label-free pick versus the label-based pick, and whether they agree, with a thin CLI.

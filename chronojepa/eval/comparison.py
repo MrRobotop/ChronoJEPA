@@ -17,7 +17,7 @@ from chronojepa.utils.seed import set_seed
 from .anomaly import MahalanobisScorer, inject_anomaly
 from .collapse import collapse_report
 from .model_selection import label_free_model_selection
-from .probes import extract_features, forecast_linear_probe
+from .probes import extract_features, forecast_linear_probe, linear_probe
 
 
 def _forecast_windows(
@@ -610,4 +610,114 @@ def format_lambda_table(out: dict) -> str:
         f"label-free pick = {lf['label_free_pick']}   "
         f"label-based pick = {lf['label_based_pick']}   agree = {lf['agree']}",
     ]
+    return "\n".join(lines)
+
+
+def _classification_labels(
+    windows: np.ndarray, kind: str, threshold: float | None = None
+) -> tuple[np.ndarray, float | None]:
+    """Build per-window binary labels from ``(N, C, T)`` windows.
+
+    ``trend`` labels whether the second half's mean exceeds the first half's, a pure
+    temporal-order property uncorrelated with the overall level. ``level`` labels whether the
+    window mean is above a threshold (the train median, passed in for test to avoid look-ahead).
+    """
+    if kind == "trend":
+        half = windows.shape[2] // 2
+        first = windows[:, :, :half].mean(axis=(1, 2))
+        second = windows[:, :, half:].mean(axis=(1, 2))
+        return (second > first).astype(int), None
+    if kind == "level":
+        means = windows.mean(axis=(1, 2))
+        cut = float(np.median(means)) if threshold is None else threshold
+        return (means > cut).astype(int), cut
+    raise ValueError(f"unknown label kind {kind!r}")
+
+
+def run_classification_comparison(
+    series: np.ndarray,
+    *,
+    seeds: tuple[int, ...] = (0, 1, 2),
+    placements: tuple[str, ...] = ("pooled", "dual"),
+    label_kinds: tuple[str, ...] = ("trend", "level"),
+    steps: int = 500,
+    window: int = 96,
+    stride: int = 8,
+    batch_size: int = 32,
+    d_model: int = 32,
+    num_slices: int = 32,
+    lam: float = 0.5,
+    pool: bool = False,
+    device: torch.device | None = None,
+    results_path: str | Path | None = None,
+) -> dict[str, dict[str, dict[str, float]]]:
+    """Linear-probe classification accuracy per placement for temporal and level labels.
+
+    ``trend`` needs temporal order, so it is where dual's preserved per-timestep structure
+    should help if it helps anywhere; ``level`` is the control a collapsed representation can
+    do. Features come from the frozen encoder (token features by default). Returns
+    ``{placement: {kind: {mean, std, values}}}``.
+    """
+    device = device or get_device()
+    raw = {p: {k: [] for k in label_kinds} for p in placements}
+
+    for seed in seeds:
+        for placement in placements:
+            encoder, scaler, splits, _ = _train_placement(
+                series,
+                placement,
+                steps=steps,
+                window=window,
+                stride=stride,
+                batch_size=batch_size,
+                d_model=d_model,
+                num_slices=num_slices,
+                lam=lam,
+                seed=seed,
+                device=device,
+            )
+            normalized = scaler.transform(series)
+            train_windows, _ = sliding_windows(normalized, *splits["train"], window, stride)
+            test_windows, _ = sliding_windows(normalized, *splits["test"], window, stride)
+            features_train = extract_features(
+                encoder, torch.from_numpy(train_windows), device, pool=pool
+            )
+            features_test = extract_features(
+                encoder, torch.from_numpy(test_windows), device, pool=pool
+            )
+            for kind in label_kinds:
+                y_train, cut = _classification_labels(train_windows, kind)
+                y_test, _ = _classification_labels(test_windows, kind, threshold=cut)
+                accuracy = linear_probe(features_train, y_train, features_test, y_test)
+                raw[placement][kind].append(accuracy)
+
+    aggregate: dict[str, dict[str, dict[str, float]]] = {}
+    for placement in placements:
+        aggregate[placement] = {}
+        for kind in label_kinds:
+            values = raw[placement][kind]
+            aggregate[placement][kind] = {
+                "mean": float(np.mean(values)),
+                "std": float(np.std(values)),
+                "values": [float(v) for v in values],
+            }
+
+    if results_path is not None:
+        path = Path(results_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(aggregate, indent=2))
+    return aggregate
+
+
+def format_classification_table(aggregate: dict[str, dict[str, dict[str, float]]]) -> str:
+    """Render placement vs label-kind classification accuracy, mean plus or minus std."""
+    kinds = list(next(iter(aggregate.values())))
+    header = f"{'placement':<12}" + "".join(f"{kind + ' acc':>22}" for kind in kinds)
+    lines = [header, "-" * len(header)]
+    for placement, per_kind in aggregate.items():
+        cells = [f"{placement:<12}"]
+        for kind in kinds:
+            entry = per_kind[kind]
+            cells.append(f"{entry['mean']:.4f}+-{entry['std']:.4f}".rjust(22))
+        lines.append("".join(cells))
     return "\n".join(lines)

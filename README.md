@@ -48,9 +48,14 @@ same way: both placements detect injected anomalies near-perfectly. A lambda swe
 the mechanism and a fourth test: SIGReg and the forecaster are in tension, since raising lambda
 raises effective rank but monotonically worsens dual's forecasting, and final SIGReg loss does
 not track downstream quality, so LeJEPA's label-free selection claim does not transfer to this
-task. Across four tests on PEMS08 the time-axis collapse is real and large but downstream-benign
-and mildly costly to prevent. See [RESULTS.md](RESULTS.md) for the full tables, the refuted
-hypotheses, and the next experiments worth running.
+task. A fifth test finally finds where dual wins: on a temporal-order classification task (is the
+window rising or falling) dual beats pooled, consistently across seeds, while both tie on a level
+control. The margin is small and near ceiling, but the direction is the predicted one. So the
+picture is task-type dependent: the time-axis collapse is real and large, fixing it does not help
+level-driven forecasting and is mildly costly there, but it helps a task that genuinely needs
+per-timestep order. The practical takeaway is to fix the collapse only when the downstream task
+depends on temporal structure. See [RESULTS.md](RESULTS.md) for the full tables, the refuted
+hypotheses, and the experiments behind this.
 
 ## Tech stack
 

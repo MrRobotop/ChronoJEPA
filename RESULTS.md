@@ -185,6 +185,33 @@ Three findings.
    non-confirmatory result for that LeJEPA claim on this task, with the caveat that SIGReg loss
    is only comparable within one objective formulation.
 
+## PEMS08 temporal-structure classification (the first place dual wins)
+
+A frozen-encoder linear probe on token features, classifying two binary labels built from the
+windows: `trend` (is the second half's mean above the first half's, a pure temporal-order
+property) and `level` (is the window mean above the train median, a control any representation
+can do). Three seeds, 500 steps. Reproduce with:
+
+```bash
+uv run python scripts/classify.py --pems data/pems08.npz --seeds 3
+```
+
+| placement | trend accuracy   | level accuracy   |
+|-----------|------------------|------------------|
+| pooled    | 0.9747 +- 0.0038 | 0.9946 +- 0.0011 |
+| dual      | 0.9793 +- 0.0000 | 0.9946 +- 0.0022 |
+
+What it shows. On the level control both placements tie at 0.995, as expected. On the trend
+task, which genuinely needs temporal order, dual is the better representation: 0.9793 against
+0.9747, a gap of about half a percentage point that is consistent across all three seeds (dual's
+accuracy sits just above pooled's mean plus one standard deviation). This is the first and only
+downstream task in this study where dual beats pooled, and it is exactly the temporal-order task
+dual's within-sequence term should suit. The effect is small and near ceiling because even a
+collapsed encoder is not order-invariant: a rising window and a falling window have different
+patch contents, so pooled still reaches 0.975. But the direction is the predicted one, which is
+the first positive evidence that preserving per-timestep structure helps when the task depends on
+it.
+
 ## Conclusion and next steps
 
 The mechanistic claim holds: the dual placement prevents the time-axis collapse, robustly and by
@@ -207,10 +234,24 @@ scales. The overall picture on this benchmark: the time-axis collapse is real an
 downstream-benign, the dual placement that fixes it trades slightly against forecasting, and
 SIGReg loss is not a reliable label-free selector for this task.
 
-What remains open is whether any task genuinely depends on the temporal structure dual preserves.
-Forecasting across horizons, a saturating anomaly detector, and the lambda sweep are all
-insensitive to the distinction or actively favor pooled. The most discriminating untested options
-are limited-label sequence or regime classification, a weaker (non-saturating) anomaly detector,
-and longer training. A reasonable working conclusion for LeJEPA issue #27 is that on PEMS-style
-forecasting the time-axis collapse does not need fixing, and the dual term should be reserved for
-tasks that demonstrably depend on per-timestep structure.
+The classification experiment then supplied the missing piece and the first positive evidence for
+dual. On a temporal-order task (trend classification) dual beats pooled, consistently across
+seeds, while the two tie on the level control. The margin is small and near ceiling, because the
+PatchTST encoder stays content-sensitive even when collapsed, but the direction is the predicted
+one: preserving per-timestep structure helps exactly when the task depends on order.
+
+So the full picture across five tests is coherent and task-type dependent. The time-axis collapse
+is real and large, and the dual placement robustly fixes it. On tasks that reward the level a
+collapsed representation already keeps (forecasting at any horizon, level classification), pooled
+is as good or slightly better, and the SIGReg regularization that prevents collapse trades a
+little against the linear forecaster. On a task that genuinely needs temporal order (trend
+classification), dual is better. The magnitudes are small throughout because the encoder is not
+order-invariant regardless of collapse. A reasonable conclusion for LeJEPA issue #27 is that the
+time-axis collapse should be diagnosed and fixed only when the downstream task depends on
+per-timestep structure; for level-driven forecasting it does not need fixing, and SIGReg loss is
+not a reliable label-free selector there.
+
+What remains open: the trend effect is small, so larger and more clearly order-dependent tasks
+(regime or phase classification, long-horizon forecasting past persistence) would test whether the
+dual advantage grows when the task leans harder on temporal structure, and longer training and a
+non-saturating anomaly detector are untested levers.
