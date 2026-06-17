@@ -13,7 +13,7 @@ import argparse
 
 import numpy as np
 
-from chronojepa.data import load_pems
+from chronojepa.data import load_ett, load_pems
 from chronojepa.eval import format_horizon_table, run_horizon_sweep
 
 
@@ -30,14 +30,20 @@ def _synthetic_series() -> np.ndarray:
 
 def main(argv: list[str] | None = None) -> dict:
     parser = argparse.ArgumentParser(description="Forecasting-vs-horizon placement sweep")
-    parser.add_argument("--pems", help="path to a PEMS .npz; uses synthetic data if omitted")
+    parser.add_argument("--pems", help="path to a PEMS .npz")
+    parser.add_argument("--ett", help="path to an ETT .csv")
     parser.add_argument("--steps", type=int, default=500)
     parser.add_argument("--seeds", type=int, default=3)
     parser.add_argument("--horizons", default="3,6,12,24,48")
     parser.add_argument("--out", default="results/horizon_sweep.json")
     args = parser.parse_args(argv)
 
-    series = load_pems(args.pems) if args.pems else _synthetic_series()
+    if args.pems:
+        series = load_pems(args.pems)
+    elif args.ett:
+        series = load_ett(args.ett)
+    else:
+        series = _synthetic_series()
     horizons = tuple(int(h) for h in args.horizons.split(","))
     aggregate = run_horizon_sweep(
         series,
