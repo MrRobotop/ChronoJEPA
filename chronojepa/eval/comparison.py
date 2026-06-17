@@ -8,7 +8,7 @@ import torch
 from sklearn.metrics import roc_auc_score
 
 from chronojepa.data import TwoViewAugmentation, build_dataloaders, sliding_windows
-from chronojepa.models import PatchTSTEncoder
+from chronojepa.models import BagOfPatchesEncoder, PatchTSTEncoder
 from chronojepa.sigreg import make_sigreg
 from chronojepa.train import train
 from chronojepa.utils.devices import get_device
@@ -231,8 +231,13 @@ def _train_placement(
     seed: int,
     device: torch.device,
     pos_encoding: bool = True,
+    make_encoder=None,
 ):
-    """Train one placement and return the frozen encoder, scaler, splits, and training logger."""
+    """Train one placement and return the frozen encoder, scaler, splits, and training logger.
+
+    ``make_encoder``, if given, is called as ``make_encoder(num_channels)`` to build the encoder,
+    so studies can swap the architecture; otherwise a PatchTST encoder is built.
+    """
     set_seed(seed)
     loaders, scaler, splits = build_dataloaders(
         series,
@@ -242,15 +247,18 @@ def _train_placement(
         augment=TwoViewAugmentation(jitter_sigma=0.1, scaling_sigma=0.1, mask_ratio=0.1),
         seed=seed,
     )
-    encoder = PatchTSTEncoder(
-        num_channels=series.shape[1],
-        patch_len=16,
-        stride=8,
-        d_model=d_model,
-        depth=2,
-        n_heads=4,
-        pos_encoding=pos_encoding,
-    )
+    if make_encoder is not None:
+        encoder = make_encoder(series.shape[1])
+    else:
+        encoder = PatchTSTEncoder(
+            num_channels=series.shape[1],
+            patch_len=16,
+            stride=8,
+            d_model=d_model,
+            depth=2,
+            n_heads=4,
+            pos_encoding=pos_encoding,
+        )
     logger = train(
         encoder,
         make_sigreg(placement, num_slices=num_slices),
@@ -770,5 +778,145 @@ def format_classification_table(aggregate: dict[str, dict[str, dict[str, float]]
         for kind in kinds:
             entry = per_kind[kind]
             cells.append(f"{entry['mean']:.4f}+-{entry['std']:.4f}".rjust(22))
+        lines.append("".join(cells))
+    return "\n".join(lines)
+
+
+_STUDY_METRICS = (
+    "across_time_variance",
+    "effective_rank",
+    "halfswap_token",
+    "halfswap_pooled",
+    "trend_token",
+    "trend_pooled",
+)
+
+
+def run_architecture_study(
+    series: np.ndarray,
+    *,
+    seeds: tuple[int, ...] = (0, 1, 2),
+    placements: tuple[str, ...] = ("pooled", "dual"),
+    steps: int = 500,
+    window: int = 96,
+    stride: int = 8,
+    batch_size: int = 32,
+    d_model: int = 32,
+    num_slices: int = 32,
+    lam: float = 0.5,
+    device: torch.device | None = None,
+    results_path: str | Path | None = None,
+) -> dict[str, dict[str, dict[str, float]]]:
+    """Factorial study: architecture x placement x probe-feature on collapse and order tasks.
+
+    For each (architecture, placement, seed) it trains an encoder, measures the collapse
+    diagnostics, and probes halfswap and trend accuracy from both the token and the pooled
+    feature. The design separates across-time collapse (set by placement) from downstream
+    order-availability (set by architecture and feature). Returns
+    ``{"architecture|placement": {metric: {mean, std, values}}}``.
+    """
+    device = device or get_device()
+    architectures = {
+        "positional": lambda channels: PatchTSTEncoder(
+            num_channels=channels, patch_len=16, stride=8, d_model=d_model, depth=2, n_heads=4
+        ),
+        "bagofpatches": lambda channels: BagOfPatchesEncoder(
+            num_channels=channels, patch_len=16, d_model=d_model
+        ),
+    }
+    raw = {
+        f"{arch}|{placement}": {metric: [] for metric in _STUDY_METRICS}
+        for arch in architectures
+        for placement in placements
+    }
+
+    for seed in seeds:
+        for arch_name, make_encoder in architectures.items():
+            for placement in placements:
+                encoder, scaler, splits, _ = _train_placement(
+                    series,
+                    placement,
+                    steps=steps,
+                    window=window,
+                    stride=stride,
+                    batch_size=batch_size,
+                    d_model=d_model,
+                    num_slices=num_slices,
+                    lam=lam,
+                    seed=seed,
+                    device=device,
+                    make_encoder=make_encoder,
+                )
+                normalized = scaler.transform(series)
+                train_windows, _ = sliding_windows(normalized, *splits["train"], window, stride)
+                val_windows, _ = sliding_windows(normalized, *splits["val"], window, stride)
+                test_windows, _ = sliding_windows(normalized, *splits["test"], window, stride)
+
+                with torch.no_grad():
+                    val_tokens, _ = encoder(torch.from_numpy(val_windows).to(device))
+                report = collapse_report(val_tokens.cpu())
+
+                record = raw[f"{arch_name}|{placement}"]
+                record["across_time_variance"].append(report["across_time_variance"])
+                record["effective_rank"].append(report["effective_rank"])
+                for feature_name, pool in (("token", False), ("pooled", True)):
+                    features_train = extract_features(
+                        encoder, torch.from_numpy(train_windows), device, pool=pool
+                    )
+                    features_test = extract_features(
+                        encoder, torch.from_numpy(test_windows), device, pool=pool
+                    )
+                    record[f"halfswap_{feature_name}"].append(
+                        _halfswap_accuracy(
+                            encoder,
+                            train_windows,
+                            test_windows,
+                            features_train,
+                            features_test,
+                            device,
+                            pool,
+                        )
+                    )
+                    y_train, _ = _classification_labels(train_windows, "trend")
+                    y_test, _ = _classification_labels(test_windows, "trend")
+                    record[f"trend_{feature_name}"].append(
+                        linear_probe(features_train, y_train, features_test, y_test)
+                    )
+
+    aggregate: dict[str, dict[str, dict[str, float]]] = {}
+    for key, record in raw.items():
+        aggregate[key] = {
+            metric: {
+                "mean": float(np.mean(record[metric])),
+                "std": float(np.std(record[metric])),
+                "values": [float(v) for v in record[metric]],
+            }
+            for metric in _STUDY_METRICS
+        }
+
+    if results_path is not None:
+        path = Path(results_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(aggregate, indent=2))
+    return aggregate
+
+
+def format_architecture_study_table(aggregate: dict[str, dict[str, dict[str, float]]]) -> str:
+    """Render the factorial study: one row per architecture|placement, mean plus or minus std."""
+    columns = (
+        ("across_time_variance", "atv"),
+        ("effective_rank", "erank"),
+        ("halfswap_token", "hsw_tok"),
+        ("halfswap_pooled", "hsw_pool"),
+        ("trend_token", "trend_tok"),
+        ("trend_pooled", "trend_pool"),
+    )
+    header = f"{'arch|placement':<22}" + "".join(f"{short:>18}" for _, short in columns)
+    lines = [header, "-" * len(header)]
+    for key, metrics in aggregate.items():
+        cells = [f"{key:<22}"]
+        for metric, _ in columns:
+            entry = metrics[metric]
+            cells.append(f"{entry['mean']:.3f}+-{entry['std']:.3f}".rjust(18))
         lines.append("".join(cells))
     return "\n".join(lines)

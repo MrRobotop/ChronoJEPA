@@ -7,7 +7,7 @@ Shared contract: encoders map ``(B, C, T)`` to ``(tokens, pooled)`` where ``toke
 import pytest
 import torch
 
-from chronojepa.models import PatchTSTEncoder, RevIN, TCNEncoder
+from chronojepa.models import BagOfPatchesEncoder, PatchTSTEncoder, RevIN, TCNEncoder
 
 B, C, T, D = 4, 3, 96, 32
 
@@ -66,6 +66,27 @@ def test_patchtst_with_pos_encoding_breaks_permutation_equivariance() -> None:
         tokens, _ = encoder(x)
         permuted, _ = encoder(_permute_patches(x, perm, patch=8))
     assert not torch.allclose(tokens[:, perm, :], permuted, atol=1e-5)
+
+
+def test_bagofpatches_pooled_feature_is_permutation_invariant() -> None:
+    torch.manual_seed(0)
+    encoder = BagOfPatchesEncoder(num_channels=1, patch_len=8, d_model=16).eval()
+    x = torch.randn(1, 1, 32)
+    perm = [3, 1, 2, 0]
+    with torch.no_grad():
+        tokens, pooled = encoder(x)
+        permuted_tokens, permuted_pooled = encoder(_permute_patches(x, perm, patch=8))
+    # Position-free: tokens permute with the patches, and the pooled mean is invariant.
+    assert torch.allclose(tokens[:, perm, :], permuted_tokens, atol=1e-5)
+    assert torch.allclose(pooled, permuted_pooled, atol=1e-5)
+
+
+def test_bagofpatches_output_contract() -> None:
+    tokens, pooled = BagOfPatchesEncoder(num_channels=C, patch_len=16, d_model=D)(
+        torch.randn(B, C, T)
+    )
+    assert tokens.ndim == 3 and tokens.shape[0] == B and tokens.shape[2] == D
+    assert pooled.shape == (B, D)
 
 
 def test_pooled_is_mean_over_time_tokens() -> None:
