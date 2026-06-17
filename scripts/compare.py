@@ -13,7 +13,7 @@ import argparse
 
 import numpy as np
 
-from chronojepa.data import load_pems
+from chronojepa.data import load_ett, load_pems
 from chronojepa.eval import (
     format_comparison_table,
     format_multiseed_table,
@@ -36,7 +36,8 @@ def _synthetic_series() -> np.ndarray:
 
 def main(argv: list[str] | None = None) -> dict:
     parser = argparse.ArgumentParser(description="Run the SIGReg placement comparison")
-    parser.add_argument("--pems", help="path to a PEMS .npz; uses synthetic data if omitted")
+    parser.add_argument("--pems", help="path to a PEMS .npz")
+    parser.add_argument("--ett", help="path to an ETT .csv")
     parser.add_argument("--steps", type=int, default=300)
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--d-model", type=int, default=64)
@@ -53,7 +54,12 @@ def main(argv: list[str] | None = None) -> dict:
     parser.add_argument("--out", default="results/placement_comparison.json")
     args = parser.parse_args(argv)
 
-    series = load_pems(args.pems) if args.pems else _synthetic_series()
+    if args.pems:
+        series = load_pems(args.pems)
+    elif args.ett:
+        series = load_ett(args.ett)
+    else:
+        series = _synthetic_series()
     common = dict(
         placements=("pooled", "dual"),
         steps=args.steps,

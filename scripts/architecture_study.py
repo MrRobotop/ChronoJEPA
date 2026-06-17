@@ -10,7 +10,7 @@ import argparse
 
 import numpy as np
 
-from chronojepa.data import load_pems
+from chronojepa.data import load_ett, load_pems
 from chronojepa.eval import format_architecture_study_table, run_architecture_study
 
 
@@ -27,13 +27,19 @@ def _synthetic_series() -> np.ndarray:
 
 def main(argv: list[str] | None = None) -> dict:
     parser = argparse.ArgumentParser(description="Architecture x placement factorial study")
-    parser.add_argument("--pems", help="path to a PEMS .npz; uses synthetic data if omitted")
+    parser.add_argument("--pems", help="path to a PEMS .npz")
+    parser.add_argument("--ett", help="path to an ETT .csv")
     parser.add_argument("--steps", type=int, default=500)
     parser.add_argument("--seeds", type=int, default=3)
     parser.add_argument("--out", default="results/architecture_study.json")
     args = parser.parse_args(argv)
 
-    series = load_pems(args.pems) if args.pems else _synthetic_series()
+    if args.pems:
+        series = load_pems(args.pems)
+    elif args.ett:
+        series = load_ett(args.ett)
+    else:
+        series = _synthetic_series()
     aggregate = run_architecture_study(
         series,
         seeds=tuple(range(args.seeds)),

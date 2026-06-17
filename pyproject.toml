@@ -14,6 +14,7 @@ dependencies = [
     "scikit-learn>=1,<2",
     "hydra-core>=1,<2",
     "omegaconf>=2,<3",
+    "pandas>=2,<3",
 ]
 
 [project.optional-dependencies]
