@@ -45,3 +45,20 @@ results/
 
 # Session-local agent state (not a project deliverable)
 .remember/
+
+# Agent instructions and internal scaffolding (not public deliverables)
+CLAUDE.md
+prompts.md
+prompts-readme.md
+LANDED.txt
+PLAN.md
+
+# LaTeX build artifacts (keep paper.tex, references.bib, paper/README.md)
+paper/*.aux
+paper/*.log
+paper/*.out
+paper/*.pdf
+paper/*.zip
+paper/*.synctex.gz
+paper/_bundle/
+paper/*.png

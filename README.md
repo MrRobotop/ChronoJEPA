@@ -1,173 +1,345 @@
+<div align="center">
+
 # ChronoJEPA
 
-ChronoJEPA is a heuristics-free self-supervised representation learning library for
-multivariate and financial time series. It is built on the SIGReg objective introduced by
-LeJEPA (arXiv:2511.08544), and its purpose is to study how that objective should be placed
-relative to the time axis so that it learns useful representations instead of collapsing.
+### When Does the Time-Axis Collapse Matter?
+**Disentangling Collapse, Positional Structure, and Representation Richness in SIGReg-Regularised Time-Series Representations**
 
-## The idea
+Rishabh Patil · University of St Andrews
 
-SIGReg regularizes a batch of embeddings toward an isotropic Gaussian. It does this by
-lifting a univariate normality test to many dimensions: it projects the embeddings onto
-random unit directions and averages a per-direction statistic. Unlike most self-supervised
-methods, it needs no stop-gradient, no teacher-student pair, no exponential moving average,
-and no schedulers. That simplicity is what makes it attractive to carry into the time domain.
+[![CI](https://github.com/MrRobotop/ChronoJEPA/actions/workflows/ci.yml/badge.svg)](https://github.com/MrRobotop/ChronoJEPA/actions/workflows/ci.yml)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
+[![PyTorch 2.x](https://img.shields.io/badge/PyTorch-2.x-ee4c2c.svg?logo=pytorch&logoColor=white)](https://pytorch.org/)
+[![Tests](https://img.shields.io/badge/tests-70%20passing-brightgreen.svg)](tests/)
+[![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-261230.svg)](https://github.com/astral-sh/ruff)
+[![uv](https://img.shields.io/badge/env-uv-de5fe9.svg)](https://github.com/astral-sh/uv)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Built on LeJEPA](https://img.shields.io/badge/builds%20on-LeJEPA%20arXiv%3A2511.08544-b31b1b.svg)](https://arxiv.org/abs/2511.08544)
+[![Device: CUDA · MPS · CPU](https://img.shields.io/badge/device-CUDA%20%7C%20MPS%20%7C%20CPU-success.svg)](#installation)
 
-## The research bet and the connection to LeJEPA issue #27
+</div>
 
-Applying SIGReg naively to a pooled sequence embedding causes a time-axis collapse. Each
-sample converges to a constant "ID vector" along time, yet SIGReg still reports a low loss
-because the pooled batch can look Gaussian even when every sequence is internally flat. This
-failure is described in LeJEPA issue #27. The core contribution of this repository is to
-diagnose that collapse and compare three placements of the objective:
+---
 
-1. `pooled`: one SIGReg over the pooled sequence embedding. This is the baseline and is
-   expected to collapse.
-2. `dual`: SIGReg applied within each sequence across time, plus across samples in the
-   batch.
-3. `structured`: a multivariate or joint formulation. This is an open research question, and
-   the repository ships an initial concrete instantiation of it.
+> **TL;DR.** SIGReg (from [LeJEPA](https://arxiv.org/abs/2511.08544)) regularises embeddings toward an
+> isotropic Gaussian with no stop-gradient, no teacher, and no schedulers. Applied naively to pooled
+> sequence embeddings it causes a *time-axis collapse* ([LeJEPA issue #27](https://github.com/rbalestr-lab/lejepa/issues/27)).
+> We confirm the collapse is real and that a `dual` placement robustly fixes it, then show the
+> surprising part: **the across-time variance "collapse" diagnostic does not measure what we assumed.**
+> It does not track downstream order availability and is anticorrelated with it. What actually governs
+> order is the encoder's **positional structure**, an axis orthogonal to the placement that controls the
+> collapse. Preventing the collapse instead buys **representation richness**, which helps real tasks
+> (e.g. **+8 to +11 accuracy points on UCI HAR**) when their targets are structured rather than near-constant.
 
-Everything in the repository serves measuring which placement prevents collapse and yields
-the best downstream representations.
+## Table of contents
 
-## Result so far
+- [Thesis](#thesis)
+- [Research questions](#research-questions)
+- [Method and architecture](#method-and-architecture)
+- [Abstract](#abstract)
+- [Key findings](#key-findings)
+- [Experimental setup](#experimental-setup)
+- [Installation](#installation)
+- [Reproducibility guide](#reproducibility-guide)
+- [Project layout](#project-layout)
+- [Testing and continuous integration](#testing-and-continuous-integration)
+- [Citation](#citation)
+- [License](#license)
 
-The headline, from an architecture-by-placement factorial on PEMS08, is that the time-axis
-collapse diagnostic does not measure what we assumed. Across-time variance does not track whether
-a representation keeps temporal order, and in the factorial it is anticorrelated with it: the most
-collapsed configuration (a positional transformer, pooled placement) recovers a content-matched
-half-swap at 0.98, while the least collapsed one (a position-free bag-of-patches encoder, variance
-about 15x higher) is at chance, 0.50. What determines order recovery is positional encoding, not
-the collapse and not the placement. The dual placement that fixes the collapse does not recover
-order in either architecture: a positional encoder already has the order, and a position-free one
-cannot get it back by preventing the collapse. The factorial replicates on a second, very
-different dataset (ETT, electricity, 7 channels, hourly). What dual does change is representation
-richness (a higher effective rank), and whether that helps downstream is task and dataset
-dependent, established with significance tests. On a real labeled task, UCI HAR activity
-recognition, dual beats pooled by 8 to 11 accuracy points under both linear and nonlinear probes
-(non-overlapping bands), the clearest win. On eight-seed forecasting, dual is significantly better
-on ETTh2 and ETTm1, pooled is significantly better on PEMS, and ETTh1 is a null (an earlier
-three-seed ETTh1 advantage did not survive). The reframing also holds with a third architecture
-(TCN). The two-axis picture: preventing the collapse does not change order availability, but it
-enriches the representation and that pays off when the task needs it. See `figures/halfswap.png`,
-`figures/har_classification.png`, and the tables in [RESULTS.md](RESULTS.md).
+## Thesis
 
-The investigation that led there, in detail. On the real PEMS08 traffic benchmark, across five
-seeds, the dual placement robustly prevents
-the time-axis collapse: it keeps about 9.5 times the across-time variance of the pooled baseline
-(0.607 against 0.064) and a clearly higher effective rank (11.5 against 8.1), with no overlap in
-the seed-to-seed bands. So the central mechanistic claim holds firmly on real data. The honest
-surprise is downstream: preventing the collapse does not help this task. Even with a temporally
-sensitive probe (predict the full horizon trajectory from the token sequence), pooled forecasts
-reliably better than dual (MAE 0.440 against 0.457), and the gap sits outside the seed noise.
-We then ruled out the obvious explanation. The guess that pooled wins only because short
-horizons are near persistence predicts the gap should close at longer horizons; a horizon sweep
-from 3 to 48 steps shows it does not, so pooled's small edge is horizon-independent, not a
-persistence artifact. A third test, Mahalanobis anomaly detection on token features, points the
-same way: both placements detect injected anomalies near-perfectly. A lambda sweep then supplies
-the mechanism and a fourth test: SIGReg and the forecaster are in tension, since raising lambda
-raises effective rank but monotonically worsens dual's forecasting, and final SIGReg loss does
-not track downstream quality, so LeJEPA's label-free selection claim does not transfer to this
-task. A fifth test finally finds where dual wins: on a temporal-order classification task (is the
-window rising or falling) dual beats pooled, consistently across seeds, while both tie on a level
-control. The margin is small but in the predicted direction. A content-matched pure-position task
-(window vs the same window with halves swapped), built to be decisive, then led to the central
-finding. It saturated for both placements, and a controlled follow-up, probing the time-mean
-feature to simulate full collapse, still classified it at about 0.98 rather than the predicted
-chance. The reason is architectural: the time-mean of PatchTST tokens is not permutation
-invariant, because positional encoding and attention write order into the token values before any
-pooling. So low across-time variance, which is what the collapse diagnostic measures, does not
-entail loss of order information. That is why the collapse is downstream-benign on PEMS: the
-order-relevant information lives in the token values, which a positional transformer computes
-order-sensitively whether or not the tokens vary across time. The collapse is real and the dual
-placement is a clean fix, but on a positional transformer it is not by itself a downstream
-problem. See [RESULTS.md](RESULTS.md) for the full tables, the refuted hypotheses, and the
-experiments behind this.
+The project began with the assumption that the time-axis collapse is the thing to prevent, and that the
+`dual` placement which prevents it should therefore yield better representations. A factorial study
+overturned that assumption and produced a **two-axis account** that the rest of the repository defends:
 
-## Tech stack
+1. **Order availability is set by architecture, not by the collapse.** Whether a representation retains
+   temporal order is governed by the encoder's positional structure (positional encoding + attention, or
+   convolution), not by how much the embeddings vary across time. A position-free encoder yields a
+   permutation-invariant pooled feature scoring *exactly* `0.500` on a content-matched order probe on two
+   datasets, while a positional transformer recovers order at `0.97`–`1.00` even when maximally collapsed.
+2. **Preventing the collapse buys representation richness, not order.** The `dual` placement robustly
+   prevents the collapse and raises effective rank. Whether that richness helps is task and dataset
+   dependent, established with paired significance tests.
 
-Python 3.11 or newer and PyTorch 2.x, device-agnostic across CUDA, Apple MPS, and CPU. The
-model side is a PatchTST-style transformer encoder with a TCN baseline and RevIN. SIGReg
-ground-truthing and evaluation use scipy and scikit-learn, configuration uses Hydra and
-OmegaConf, and experiment logging uses Weights and Biases (optional, offline by default).
-Environments are managed with uv, linting and formatting with ruff, tests with pytest, and
-commit gates with pre-commit. The SIGReg core itself depends only on torch.
+The across-time variance "collapse" diagnostic is therefore *anticorrelated* with order recovery in our
+factorial: the most collapsed configuration keeps order, the least collapsed loses it.
 
-## Install
+## Research questions
 
-This project uses [uv](https://docs.astral.sh/uv/). The pinned interpreter is recorded in
-`.python-version`, and uv will provision it for you.
+| # | Question | Verdict |
+|---|----------|---------|
+| **RQ1** | Is the time-axis collapse real, and does the `dual` placement prevent it? | **Yes.** `dual` keeps ~9.5× the across-time variance of `pooled` on PEMS08 (0.607 vs 0.064), higher effective rank (11.5 vs 8.1), non-overlapping seed bands. |
+| **RQ2** | Does preventing the collapse improve downstream forecasting? | **Dataset dependent.** Significantly better on ETTh2/ETTm1, significantly worse on PEMS08, null on ETTh1 (8 seeds, paired t-test + bootstrap CI). |
+| **RQ3** | Does across-time variance measure downstream order availability? | **No — it is anticorrelated.** Order is governed by positional encoding, an axis orthogonal to placement. Confirmed across 3 architectures, 2 datasets, with an exact `0.500` chance anchor. |
+| **RQ4** | Can SIGReg loss serve as a label-free model selector for time series? | **Not confirmed.** SIGReg loss does not track forecasting quality here; the only positive cross-config correlation is a placement-scale confound. |
+| **RQ5** | Is there a real task where preventing the collapse clearly helps? | **Yes — UCI HAR.** `dual` beats `pooled` by 8–11 accuracy points under both linear and nonlinear probes, with non-overlapping bands, and the gain tracks collapse severity across architectures. |
+
+## Method and architecture
+
+SIGReg lifts a univariate normality test to many dimensions by projecting embeddings onto random unit
+directions and averaging a per-direction statistic, regularising the batch toward an isotropic Gaussian.
+ChronoJEPA studies **where** that objective is applied relative to the time axis.
+
+```mermaid
+flowchart LR
+    X["Time-series window<br/>(B, T, C)"] --> ENC
+
+    subgraph ENC["Encoder (device-agnostic)"]
+        direction TB
+        P["PatchTST<br/>(positional)"]
+        T["TCN<br/>(positional via conv)"]
+        B["Bag-of-Patches<br/>(position-free)"]
+    end
+
+    ENC --> E["Token embeddings<br/>(B, N_tokens, d_model)"]
+
+    E --> POOLED["pooled<br/>SIGReg over the<br/>pooled embedding<br/>(baseline → collapses)"]
+    E --> DUAL["dual<br/>SIGReg within each<br/>sequence across time<br/>+ across the batch"]
+    E --> STRUCT["structured<br/>joint multivariate<br/>formulation"]
+
+    POOLED & DUAL & STRUCT --> PROBE["Frozen-encoder probes<br/>forecasting · classification ·<br/>anomaly · collapse diagnostics"]
+```
+
+- **`pooled`** — one SIGReg over the pooled sequence embedding. The baseline; expected to collapse.
+- **`dual`** — SIGReg applied within each sequence across time *plus* across samples in the batch. The
+  per-timestep embeddings of a single window are themselves pushed toward isotropy and cannot all coincide.
+- **`structured`** — a joint multivariate variant (open research direction).
+
+The SIGReg core (`chronojepa/sigreg/`) depends only on `torch` so it stays portable into other codebases,
+and every statistical test is ground-truthed against scipy or a closed-form value in `tests/`.
+
+## Abstract
+
+LeJEPA (arXiv:2511.08544) replaces the heuristic machinery of self-supervised learning with a single
+isotropic-Gaussian regulariser, SIGReg, applied with no stop-gradient, no teacher, and no schedulers.
+Carrying SIGReg to sequence models raises a documented hazard (LeJEPA issue #27): a naive pooled
+application can drive each sequence to a constant vector along time, a time-axis collapse that the
+objective does not penalise. We build a self-supervised time-series library around this question and
+compare three placements of SIGReg relative to the time axis: pooled (the baseline), dual (SIGReg within
+each sequence across time plus across the batch), and structured (a joint variant). We confirm that the
+collapse is real and that the placement controls it: dual robustly raises across-time variance by roughly
+an order of magnitude relative to pooled.
+
+Our central finding is negative and, we argue, clarifying. Through a factorial study that crosses encoder
+architecture with placement and probe feature, we show that the across-time variance collapse does not
+measure downstream order availability, and in our experiments it is anticorrelated with it. The
+determinant of whether a representation retains temporal order is the encoder's positional structure
+(positional encoding and attention, or convolution), an axis orthogonal to the placement that controls the
+collapse. A position-free encoder yields a permutation-invariant pooled feature whose order-recovery
+accuracy is exactly 0.500 on a content-matched probe on two datasets, while a positional transformer, even
+when maximally collapsed, recovers order at 0.97 to 1.00. The result holds across three architectures
+(positional transformer, temporal convolution, position-free bag of patches) and two datasets.
+
+The dual placement is nonetheless useful where the task needs the richer representation it produces. On a
+real labeled task, UCI HAR activity recognition, dual outperforms pooled by 8 to 11 accuracy points under
+both linear and nonlinear probes. On forecasting, with eight seeds and paired significance tests, dual is
+significantly better on ETTh2 and ETTm1, significantly worse on PEMS, and not different on ETTh1. We
+therefore propose a two-axis account: preventing the time-axis collapse does not change order availability
+(set by positional structure) but increases representation richness (higher effective rank), which helps
+downstream tasks whose targets are structured rather than near-constant.
+
+## Key findings
+
+### 1. The collapse is real, and across-time variance is anticorrelated with order recovery
+
+The factorial crosses encoder architecture (positional PatchTST vs a position-free bag-of-patches) with
+placement on PEMS08, three seeds. The most collapsed configuration recovers a content-matched half-swap at
+`0.98`; the least collapsed one is at chance `0.50`.
+
+<div align="center">
+<img src="figures/collapse.png" alt="Across-time variance and effective rank by architecture and placement" width="49%"/>
+<img src="figures/halfswap.png" alt="Half-swap order-recovery accuracy by architecture and placement" width="49%"/>
+</div>
+
+| arch · placement | across-time var | eff rank | halfswap (token) | halfswap (pooled) |
+|------------------|-----------------|----------|------------------|-------------------|
+| positional · pooled   | 0.113 ± 0.018 | 6.62 ± 0.14 | 1.000 ± 0.000 | 0.980 ± 0.012 |
+| positional · dual     | 0.620 ± 0.006 | 8.49 ± 0.19 | 1.000 ± 0.001 | 0.976 ± 0.010 |
+| bagofpatches · pooled | 1.712 ± 0.135 | 1.45 ± 0.05 | 0.499 ± 0.008 | **0.500 ± 0.000** |
+| bagofpatches · dual   | 1.739 ± 0.091 | 1.61 ± 0.05 | 0.489 ± 0.007 | **0.500 ± 0.000** |
+
+The position-free pooled feature hitting *exactly* `0.500` is the architecture-independent anchor: a
+genuinely position-free representation is exactly order-blind, regardless of placement.
+
+### 2. The result replicates on a second, very different dataset (ETT)
+
+The same factorial on ETTh1 (electricity transformer temperature, 7 channels, hourly) reproduces the
+thesis through the clean order probe (trend from the pooled feature) and the exact `0.500` half-swap anchor.
+
+<div align="center">
+<img src="figures/ett/collapse.png" alt="ETT collapse diagnostics" width="32%"/>
+<img src="figures/ett/halfswap.png" alt="ETT half-swap accuracy" width="32%"/>
+<img src="figures/ett/trend.png" alt="ETT trend accuracy" width="32%"/>
+</div>
+
+### 3. The one clear win for `dual`: UCI HAR activity recognition
+
+On a real labeled, order-dependent task (9 inertial channels, 6 activities), self-supervised pretraining
+then frozen-feature probing. `dual` beats `pooled` by 8–11 accuracy points on every probe, non-overlapping
+bands, under both linear and nonlinear readouts.
+
+<div align="center">
+<img src="figures/har_classification.png" alt="UCI HAR classification accuracy: dual vs pooled across probes" width="62%"/>
+</div>
+
+| placement | linear (pooled) | MLP (pooled) | linear (token) | MLP (token) | across-time var |
+|-----------|-----------------|--------------|----------------|-------------|-----------------|
+| pooled | 0.576 ± 0.008 | 0.633 ± 0.014 | 0.636 ± 0.009 | 0.679 ± 0.016 | 0.019 ± 0.003 |
+| dual   | **0.655 ± 0.023** | **0.718 ± 0.021** | **0.740 ± 0.024** | **0.788 ± 0.023** | 0.602 ± 0.052 |
+
+The `dual` gain tracks collapse severity across architectures: `+0.101` on the positional encoder (which
+collapses most), `+0.044` on the TCN, `+0.011` (within noise) on the position-free encoder (which barely
+collapses) — closing the causal loop between the placement and the collapse it prevents.
+
+### 4. Forecasting: dataset-dependent, established with paired significance tests
+
+Trajectory forecasting (positional encoder, identical settings), eight seeds, paired t-test plus 95%
+bootstrap CI on the dual-minus-pooled MAE gap (paired by seed).
+
+| dataset | pooled MAE | dual MAE | gap (dual−pooled) | p | 95% CI | verdict |
+|---------|------------|----------|-------------------|---|--------|---------|
+| PEMS08 | 0.4421 | 0.4563 | +0.0142 | 0.001 | [+0.009, +0.019] | pooled better (sig) |
+| ETTh1  | 1.1833 | 1.1614 | −0.0219 | 0.52 | [−0.086, +0.033] | no difference (null) |
+| ETTh2  | 0.8589 | 0.7378 | −0.1211 | 0.0004 | [−0.156, −0.088] | **dual better (sig)** |
+| ETTm1  | 0.6337 | 0.5843 | −0.0494 | <1e−4 | [−0.056, −0.043] | **dual better (sig)** |
+
+> An earlier three-seed ETTh1 advantage did **not** survive eight seeds; the overclaim was corrected. The
+> full set of tables, refuted hypotheses, and the experiments behind every number live in
+> **[RESULTS.md](RESULTS.md)**, with the academic write-up in **[PAPER.md](PAPER.md)**.
+
+## Experimental setup
+
+**Datasets**
+
+| Dataset | Domain | Shape | Source |
+|---------|--------|-------|--------|
+| PEMS08 | California highway traffic | 170 sensors × 17,856 five-minute steps (flow) | [ASTGCN](https://github.com/wanhuaiyu/ASTGCN) (`data/PEMS08/pems08.npz`, ~17.7 MB) |
+| ETTh1 / ETTh2 / ETTm1 | Electricity transformer temperature | 7 channels, hourly/15-min, ~17k steps | [Informer/ETT](https://github.com/zhouhaoyi/ETDataset) |
+| UCI HAR | Human activity recognition (smartphone IMU) | 9 channels × 128 steps, 6 activities, ~7,350 train sequences | [UCI ML Repository](https://archive.ics.uci.edu/dataset/240/human+activity+recognition+using+smartphones) |
+| Synthetic | Mixed-frequency sanity check | 3 channels × 2,400 steps | generated in-repo |
+
+**Encoders.** Positional PatchTST-style transformer (`d_model` 64 unless noted), a TCN (positional via
+convolution), and a position-free bag-of-patches (non-overlapping patches, shared per-patch MLP, no
+positional encoding, no cross-patch attention). RevIN for forecasting.
+
+**Default training.** 500 steps per placement, batch 32, 32 random SIGReg slices, window 96, horizon 12,
+λ = 0.5, AdamW. Seeds aggregated as stated per experiment (3, 5, or 8). Runs on Apple MPS, CUDA, or CPU.
+
+**No look-ahead bias.** Normalisation statistics and splits are computed on training data only and applied
+forward; future timestamps never inform past windows. Every run seeds numpy and torch and saves its
+resolved config.
+
+## Installation
+
+This project uses [uv](https://docs.astral.sh/uv/). The pinned interpreter is recorded in `.python-version`
+and uv will provision it.
 
 ```bash
+git clone https://github.com/MrRobotop/ChronoJEPA.git
+cd ChronoJEPA
 uv sync
 ```
 
-## Quickstart
-
-Verify a clean checkout in one command (creates the environment, lints, and runs the tests):
+Verify a clean checkout in one command (creates the environment, lints, runs the tests):
 
 ```bash
 bash scripts/init.sh
 ```
 
-Run a fast end-to-end training smoke on synthetic data:
+## Reproducibility guide
 
+Every number in [RESULTS.md](RESULTS.md) is produced by a script in this repository and is reproducible
+from the command quoted alongside it. The headline commands:
+
+**0. Smoke test (synthetic, fast, no download).**
 ```bash
 uv run python scripts/train.py +experiment=smoke
+uv run python scripts/compare.py                      # synthetic placement comparison
 ```
 
-Reproduce the placement comparison table:
-
+**1. The collapse result and placement comparison (PEMS08).**
 ```bash
-uv run python scripts/compare.py
+uv run python scripts/compare.py --pems data/pems08.npz --steps 500 \
+  --batch-size 32 --num-slices 32 --forecast trajectory --seeds 5
 ```
 
-Sweep over the placements and the lambda tradeoff with Hydra multirun:
-
+**2. The central factorial (architecture × placement) and its figures.**
 ```bash
-uv run python scripts/train.py -m placement=pooled,dual,structured lam=0.1,0.5,0.9
+uv run python scripts/architecture_study.py --pems data/pems08.npz --seeds 3
+uv run python scripts/plot_study.py results/pems_architecture_study.json --outdir figures
+# external validity on ETT:
+uv run python scripts/architecture_study.py --ett data/ETTh1.csv --seeds 3
+uv run python scripts/plot_study.py results/ett_architecture_study.json --outdir figures/ett
 ```
 
-Train on PEMS once you have downloaded the dataset:
-
+**3. Forecasting with paired significance tests (per dataset, 8 seeds).**
 ```bash
-uv run python scripts/train.py +experiment=pems_dual data.path=/path/to/pems.npz
+uv run python scripts/compare.py --pems data/pems08.npz --steps 500 --batch-size 32 \
+  --num-slices 32 --forecast trajectory --seeds 8
+# repeat with --ett data/ETTh1.csv  /  --ett data/ETTh2.csv  /  --ett data/ETTm1.csv
 ```
 
-## Running the tests
-
+**4. The HAR win (real labeled task).**
 ```bash
-uv run pytest -q
+uv run python scripts/classify_dataset.py --har "data/UCI HAR Dataset" --seeds 5
 ```
 
-Lint and format checks match what continuous integration runs:
-
+**5. Supporting investigations.**
 ```bash
-uv run ruff check .
-uv run ruff format --check .
+uv run python scripts/horizon_sweep.py --pems data/pems08.npz --seeds 3 --horizons 3,6,12,24,48
+uv run python scripts/lambda_sweep.py  --pems data/pems08.npz --seeds 3 --lambdas 0.1,0.3,0.5,0.7,0.9
+uv run python scripts/anomaly.py       --pems data/pems08.npz --seeds 3 --steps 500 --strength 1.5
+uv run python scripts/classify.py      --pems data/pems08.npz --seeds 3
 ```
+
+Datasets are not committed (see `.gitignore`); download PEMS08, ETT, and UCI HAR from the sources in
+[Experimental setup](#experimental-setup) into `data/`.
 
 ## Project layout
 
 ```
 chronojepa/
-  sigreg/   SIGReg objective: univariate tests, random slicing, placement variants
-  models/   encoders (PatchTST, TCN), an MLP predictor, RevIN
-  data/     dataset loaders and time-series augmentations
+  sigreg/   SIGReg objective: univariate tests, random slicing, placement variants (torch-only)
+  models/   encoders (PatchTST, TCN, bag-of-patches), an MLP predictor, RevIN
+  data/     dataset loaders (PEMS, ETT, HAR) and time-series augmentations
   train/    training loop and the config-driven experiment runner
   eval/     probes, forecasting, collapse diagnostics, anomaly scoring, model selection
   utils/    seeding, device selection, logging
 configs/    Hydra configs (data, model, optimizer, named experiments)
-scripts/    runnable entry points (init.sh, train.py, compare.py, plot_results.py)
-tests/      pytest suite
+scripts/    runnable entry points (init.sh, train.py, compare.py, architecture_study.py, ...)
+tests/      pytest suite (70 tests; statistical tests ground-truthed against scipy)
+figures/    publication figures regenerated by plot_study.py / plot_results.py
+paper/      LaTeX sources (paper.tex, references.bib) for the working paper
+RESULTS.md  every table, with seeds, CIs, refuted hypotheses, and reproduction commands
+PAPER.md    full academic write-up
 ```
+
+## Testing and continuous integration
+
+```bash
+uv run pytest -q                  # 70 tests
+uv run ruff check .               # lint
+uv run ruff format --check .      # format
+```
+
+CI runs lint, format check, and the full test suite on every push and pull request
+([workflow](.github/workflows/ci.yml)). SIGReg's statistical tests are validated against scipy or
+closed-form values, and all results are seeded and reproducible.
 
 ## Citation
 
 This work builds directly on LeJEPA and its SIGReg objective.
 
 ```bibtex
+@misc{patil2025chronojepa,
+  title  = {When Does the Time-Axis Collapse Matter? Disentangling Collapse, Positional
+            Structure, and Representation Richness in SIGReg-Regularised Time-Series Representations},
+  author = {Patil, Rishabh},
+  note   = {University of St Andrews. Working paper},
+  year   = {2025},
+  url    = {https://github.com/MrRobotop/ChronoJEPA}
+}
+
 @misc{lejepa,
   title = {LeJEPA},
   note  = {arXiv:2511.08544},
